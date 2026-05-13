@@ -43,20 +43,18 @@
             border-right: 1px solid #444;
         }
         #left-panel.open { transform: translateX(0); }
-        #left-panel .close-panel-btn {
-            position: absolute;
-            top: 12px;
-            right: 12px;
-            background: #444;
-            border: none;
+        .panel-close-btn {
+            display: block;
+            width: 100%;
+            background: #ff3b30;
             color: white;
-            font-size: 20px;
-            width: 32px; height: 32px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            border: none;
+            font-size: 18px;
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 15px;
             cursor: pointer;
+            text-align: center;
         }
         #left-panel h2 { font-size: 1.2rem; margin-bottom: 10px; color: var(--accent); }
         .group {
@@ -140,16 +138,24 @@
             display: none;
             position: fixed;
             z-index: 200;
-            left: 50%; top: 50%;
-            transform: translate(-50%,-50%);
             background: #2d2d2d;
-            padding: 20px;
             border: 1px solid #555;
             border-radius: 12px;
             width: 90%;
             max-width: 350px;
             max-height: 80vh;
             overflow-y: auto;
+            left: 50%; top: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .modal.active { display: block; }
+        .modal-header {
+            background: #444;
+            padding: 10px;
+            border-radius: 12px 12px 0 0;
+            cursor: grab;
+            text-align: center;
+            font-weight: bold;
         }
         .modal input[type="number"] { width: 80px; }
         .modal .row { margin: 8px 0; }
@@ -177,11 +183,14 @@
             cursor: pointer;
         }
         #waypoint-list div:active { background: var(--accent); }
+
+        /* 修复iOS输入框首次点击不弹键盘 */
+        input, textarea { -webkit-user-select: auto; user-select: auto; }
     </style>
 </head>
 <body>
 <div id="left-panel">
-    <button class="close-panel-btn" onclick="closePanel()">✕</button>
+    <button class="panel-close-btn" onclick="closePanel()">✕ 关闭工具箱</button>
     <h2>操作</h2>
     <div class="group">
         <button onclick="openRelativeDialog()">相对坐标编辑器</button>
@@ -238,26 +247,29 @@
     </div>
 </div>
 
+<!-- 可拖动的相对坐标编辑器 -->
 <div id="relativeModal" class="modal">
-    <h3>相对坐标编辑器</h3>
-    <div class="row">
-        <label>基准点:</label>
-        <select id="basePointSelect"></select>
+    <div class="modal-header" id="modalHeader">相对坐标编辑器 (拖动此处移动)</div>
+    <div style="padding: 15px;">
+        <div class="row">
+            <label>基准点:</label>
+            <select id="basePointSelect"></select>
+        </div>
+        <div class="row">
+            <label>方位角(°):</label>
+            <input type="number" id="relAzimuth" value="0">
+        </div>
+        <div class="row">
+            <label>距离(米):</label>
+            <input type="number" id="relDistance" value="100">
+        </div>
+        <div class="row">
+            <label>新标签:</label>
+            <input type="text" id="relLabel" value="">
+        </div>
+        <button onclick="addWaypointByRelative()">添加航点</button>
+        <button onclick="closeRelativeDialog()">关闭</button>
     </div>
-    <div class="row">
-        <label>方位角(°):</label>
-        <input type="number" id="relAzimuth" value="0">
-    </div>
-    <div class="row">
-        <label>距离(米):</label>
-        <input type="number" id="relDistance" value="100">
-    </div>
-    <div class="row">
-        <label>新标签:</label>
-        <input type="text" id="relLabel" value="">
-    </div>
-    <button onclick="addWaypointByRelative()">添加航点</button>
-    <button onclick="closeRelativeDialog()">关闭</button>
 </div>
 
 <div id="waypoint-list"></div>
@@ -267,7 +279,7 @@
     const canvas = document.getElementById('mainCanvas');
     const ctx = canvas.getContext('2d');
     const statusBar = document.getElementById('status-bar');
-    const dpr = window.devicePixelRatio || 1; // 设备像素比
+    const dpr = window.devicePixelRatio || 1;
 
     let waypoints = [];
     let selectedWaypointIndex = null;
@@ -293,14 +305,17 @@
     let lastTapPos = null;
     let longPressTimer = null;
     let longPressTarget = null;
-    // 双指缩放状态
     let pinchStartDist = null;
     let pinchStartScale = 1;
-    let pinchCenter = null;       // 两指中心在屏幕上的位置
-    let pinchWorldCenter = null;  // 中心对应的世界坐标（保持不变）
+    let pinchCenter = null;
+    let pinchWorldCenter = null;
     let draggingWaypointIndex = null;
     let draggingAuxIndex = null;
     let panStart = null;
+
+    // 弹窗拖动相关
+    let isDraggingModal = false;
+    let modalDragStart = { x: 0, y: 0, left: 0, top: 0 };
 
     // ==================== 工具函数 ====================
     function toRad(deg) { return deg * Math.PI / 180; }
@@ -343,7 +358,6 @@
         }
     }
 
-    // 坐标转换（使用 CSS 像素，因为 canvas 尺寸就是 CSS 像素，ctx 已经用 dpr 缩放）
     function worldToScreen(wx, wy) {
         return { x: wx * scale + panOffset[0], y: wy * scale + panOffset[1] };
     }
@@ -460,7 +474,7 @@
         refreshCanvas();
     }
 
-    // ==================== 交点计算 ====================
+    // ==================== 交点计算（完整保留原逻辑） ====================
     function computeAllIntersections() {
         const segs = [];
         if (waypoints.length >= 2) {
@@ -551,12 +565,10 @@
     function refreshCanvas() { drawCanvas(); updateRotateCombos(); updateCircleListbox(); }
 
     function drawCanvas() {
-        // 设置 canvas 物理尺寸为 CSS 尺寸 * 设备像素比
         const cw = canvas.clientWidth;
         const ch = canvas.clientHeight;
         canvas.width = cw * dpr;
         canvas.height = ch * dpr;
-        // 缩放上下文，使绘图使用 CSS 坐标
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
         ctx.clearRect(0, 0, cw, ch);
@@ -570,6 +582,7 @@
         for (let x = ox; x < cw; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ch); ctx.stroke(); }
         for (let y = oy; y < ch; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cw, y); ctx.stroke(); }
 
+        // 罗盘
         const r = 50, cxr = cw - r - 15, cyr = r + 15;
         ctx.strokeStyle = '#7f8c8d'; ctx.beginPath(); ctx.arc(cxr, cyr, r, 0, Math.PI*2); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr-r, cyr); ctx.lineTo(cxr+r, cyr); ctx.stroke();
@@ -585,17 +598,28 @@
             ctx.fillText(t, cxr+(r+12)*Math.cos(rad), cyr-(r+12)*Math.sin(rad));
         });
 
+        // 航线 + 标注方位角和距离
         const edges = getAllEdges();
         edges.forEach(({i1,i2}) => {
-            const sp1 = worldToScreen(waypoints[i1].x, waypoints[i1].y);
-            const sp2 = worldToScreen(waypoints[i2].x, waypoints[i2].y);
+            const wp1 = waypoints[i1], wp2 = waypoints[i2];
+            const sp1 = worldToScreen(wp1.x, wp1.y);
+            const sp2 = worldToScreen(wp2.x, wp2.y);
             let color = '#2980b9';
             if (selectedEdges.length>=1 && ((selectedEdges[0].i1===i1&&selectedEdges[0].i2===i2)||(selectedEdges[0].i1===i2&&selectedEdges[0].i2===i1))) color='#e74c3c';
             else if (selectedEdges.length>=2 && ((selectedEdges[1].i1===i1&&selectedEdges[1].i2===i2)||(selectedEdges[1].i1===i2&&selectedEdges[1].i2===i1))) color='#f1c40f';
             ctx.strokeStyle=color; ctx.lineWidth=4;
             ctx.beginPath(); ctx.moveTo(sp1.x,sp1.y); ctx.lineTo(sp2.x,sp2.y); ctx.stroke();
+
+            // 标注方位角和距离
+            const az = azimuth(wp1.x, wp1.y, wp2.x, wp2.y);
+            const d = dist(wp1.x, wp1.y, wp2.x, wp2.y);
+            const mx = (sp1.x + sp2.x) / 2, my = (sp1.y + sp2.y) / 2;
+            ctx.fillStyle = '#e67e22';
+            ctx.font = 'bold 8px Arial';
+            ctx.fillText(`${az.toFixed(0)}° ${d.toFixed(1)}m`, mx, my - 8);
         });
 
+        // 航点
         waypoints.forEach((wp,i)=>{
             const sp = worldToScreen(wp.x,wp.y);
             const color = wp.label==='H'?'#e74c3c':(i===selectedWaypointIndex?'#f39c12':'#3498db');
@@ -605,12 +629,15 @@
             ctx.fillStyle='#2c3e50'; ctx.font=`bold ${wp.label==='H'?15:13}px Arial`;
             ctx.textAlign='center'; ctx.fillText(wp.label,sp.x,sp.y-20);
             if(waypoints.length>=3){
-                const prev=waypoints[(i-1+waypoints.length)%waypoints.length], next=waypoints[(i+1)%waypoints.length];
+                const prev=waypoints[(i-1+waypoints.length)%waypoints.length];
+                const next=waypoints[(i+1)%waypoints.length];
                 const ang=calcAngleAtVertex(prev,wp,next);
-                ctx.font='9px Arial'; ctx.fillText(`内:${ang.toFixed(1)}°`,sp.x,sp.y+15);
+                ctx.font='9px Arial';
+                ctx.fillText(`内:${ang.toFixed(1)}°`,sp.x,sp.y+15);
             }
         });
 
+        // 辅助方向线
         auxDirLines.forEach(dl => {
             const wp = waypoints.find(w => w.label === dl.vertexLabel);
             if (!wp) return;
@@ -624,6 +651,7 @@
             ctx.setLineDash([]);
         });
 
+        // 辅助圆
         auxCircles.forEach(c => {
             let center;
             if (c.centerType === 'vertex') center = waypoints.find(w => w.label === c.centerRef);
@@ -639,6 +667,7 @@
             ctx.fillText(`${Math.round(c.radius)}m`, sp.x, sp.y);
         });
 
+        // 交点
         if (showIntersections) {
             updateIntersectionsCache();
             intersectionsCache.forEach(pt => {
@@ -649,6 +678,7 @@
             });
         }
 
+        // 辅助点
         auxPoints.forEach((ap, idx) => {
             const sp = worldToScreen(ap.x, ap.y);
             ctx.fillStyle = '#9400d3'; ctx.beginPath(); ctx.arc(sp.x, sp.y, 6, 0, Math.PI*2); ctx.fill();
@@ -776,12 +806,14 @@
         refreshCanvas();
     }
 
-    // ==================== 相对坐标编辑器 ====================
+    // ==================== 相对坐标编辑器（保持打开，可拖动） ====================
     function openRelativeDialog() {
-        document.getElementById('relativeModal').style.display = 'block';
+        // 打开编辑器时关闭添加模式
+        if (addMode) toggleAddMode();
+        document.getElementById('relativeModal').classList.add('active');
         updateBasePointCombo();
     }
-    function closeRelativeDialog() { document.getElementById('relativeModal').style.display = 'none'; }
+    function closeRelativeDialog() { document.getElementById('relativeModal').classList.remove('active'); }
     function updateBasePointCombo() {
         const sel = document.getElementById('basePointSelect');
         sel.innerHTML = waypoints.map(w => `<option>${w.label}</option>`).join('');
@@ -798,10 +830,36 @@
         const ny = bp.y - distVal * Math.sin(rad);
         saveState();
         waypoints.push({ x: nx, y: ny, label, params: { height: 100, verticalSpeed: 5, horizontalSpeed: 15, turnMode: '曲线飞行' } });
-        closeRelativeDialog();
         refreshCanvas();
+        // 不关闭弹窗，保持打开
     }
 
+    // 弹窗拖动
+    const modal = document.getElementById('relativeModal');
+    const header = document.getElementById('modalHeader');
+    header.addEventListener('touchstart', (e) => {
+        e.stopPropagation();
+        isDraggingModal = true;
+        const rect = modal.getBoundingClientRect();
+        modalDragStart = {
+            x: e.touches[0].clientX,
+            y: e.touches[0].clientY,
+            left: rect.left,
+            top: rect.top
+        };
+    });
+    document.addEventListener('touchmove', (e) => {
+        if (isDraggingModal) {
+            const dx = e.touches[0].clientX - modalDragStart.x;
+            const dy = e.touches[0].clientY - modalDragStart.y;
+            modal.style.left = (modalDragStart.left + dx) + 'px';
+            modal.style.top = (modalDragStart.top + dy) + 'px';
+            modal.style.transform = 'none';
+        }
+    }, { passive: false });
+    document.addEventListener('touchend', () => { isDraggingModal = false; });
+
+    // ==================== 其他功能 ====================
     function resetView() {
         if (waypoints.length === 0) {
             scale = 1; panOffset = [0, 0];
@@ -830,12 +888,12 @@
         if (idx >= 0) selectedCircleIndex = idx;
     });
 
-    // ==================== 手机UI控制 ====================
-    function togglePanel() {
-        document.getElementById('left-panel').classList.toggle('open');
-    }
-    function closePanel() {
-        document.getElementById('left-panel').classList.remove('open');
+    function togglePanel() { document.getElementById('left-panel').classList.toggle('open'); }
+    function closePanel() { document.getElementById('left-panel').classList.remove('open'); }
+
+    function disableAddMode() {
+        addMode = false;
+        document.getElementById('addBtn').style.background = '';
     }
     function toggleAddMode() {
         addMode = !addMode;
@@ -864,13 +922,12 @@
         refreshCanvas();
     }
 
-    // ==================== 触摸事件（修复缩放） ====================
+    // ==================== 触摸事件（完整缩放修复） ====================
     function getCanvasTouch(e) {
         const rect = canvas.getBoundingClientRect();
         return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
     }
 
-    // 关闭面板（画布点击）
     canvas.addEventListener('click', (e) => {
         const panel = document.getElementById('left-panel');
         if (panel.classList.contains('open') && !panel.contains(e.target)) {
@@ -880,6 +937,7 @@
 
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
+        // 关闭面板
         const panel = document.getElementById('left-panel');
         if (panel.classList.contains('open')) {
             const touch = e.touches[0];
@@ -889,19 +947,15 @@
         }
 
         if (e.touches.length === 2) {
-            // 开始双指缩放
             touchMode = 'pinch';
-            const t1 = e.touches[0];
-            const t2 = e.touches[1];
+            const t1 = e.touches[0], t2 = e.touches[1];
             pinchStartDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
             pinchStartScale = scale;
-            // 计算两指中心（屏幕坐标）
-            const cx = (t1.clientX + t2.clientX) / 2;
-            const cy = (t1.clientY + t2.clientY) / 2;
             const rect = canvas.getBoundingClientRect();
-            pinchCenter = { x: cx - rect.left, y: cy - rect.top };
-            // 记录此时中心点对应的世界坐标
-            pinchWorldCenter = screenToWorld(pinchCenter.x, pinchCenter.y);
+            const cx = (t1.clientX + t2.clientX) / 2 - rect.left;
+            const cy = (t1.clientY + t2.clientY) / 2 - rect.top;
+            pinchCenter = { x: cx, y: cy };
+            pinchWorldCenter = screenToWorld(cx, cy);
             return;
         }
         if (touchMode === 'pinch') return;
@@ -911,8 +965,6 @@
 
         if (addMode) {
             addWaypoint(world.x, world.y);
-            addMode = false;
-            document.getElementById('addBtn').style.background = '';
             return;
         }
         if (auxMode) {
@@ -966,15 +1018,11 @@
     canvas.addEventListener('touchmove', (e) => {
         e.preventDefault();
         if (touchMode === 'pinch' && e.touches.length === 2) {
-            const t1 = e.touches[0];
-            const t2 = e.touches[1];
+            const t1 = e.touches[0], t2 = e.touches[1];
             const curDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
             if (pinchStartDist && pinchCenter && pinchWorldCenter) {
-                // 计算新缩放
-                const newScale = Math.min(20, Math.max(0.1, pinchStartScale * (curDist / pinchStartDist)));
-                // 调整 panOffset 使 pinchWorldCenter 在缩放后仍然对应 pinchCenter
-                // 原理：worldToScreen(pinchWorldCenter) = pinchWorldCenter * newScale + newPanOffset = pinchCenter
-                // 所以 newPanOffset = pinchCenter - pinchWorldCenter * newScale
+                const factor = curDist / pinchStartDist;
+                const newScale = Math.min(20, Math.max(0.1, pinchStartScale * factor));
                 const newPanX = pinchCenter.x - pinchWorldCenter.x * newScale;
                 const newPanY = pinchCenter.y - pinchWorldCenter.y * newScale;
                 scale = newScale;
@@ -1060,6 +1108,13 @@
         showIntersections = e.target.checked;
         refreshCanvas();
     });
+
+    // 修复iOS输入框首次点击不弹键盘：全局touchstart对input豁免
+    document.body.addEventListener('touchstart', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+            e.target.focus();
+        }
+    }, { passive: true });
 
     // 初始化
     saveState();
