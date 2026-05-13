@@ -1,0 +1,13 @@
+{
+  "name": "航线规划",
+  "short_name": "航线规划",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#007aff",
+  "icons": [{
+    "src": "icon-180.png",
+    "sizes": "180x180",
+    "type": "image/png"
+  }]
+}
