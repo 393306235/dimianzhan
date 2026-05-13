@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>航线规划器</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    body { margin:0; padding:0; }
+    #map { position:absolute; top:0; bottom:0; width:100%; }
+    .maplibregl-popup { max-width: 200px; }
+    button {
+      background: #007aff; color: white; border: none;
+      padding: 12px 20px; border-radius: 12px; font-size: 16px;
+      margin: 5px;
+    }
+    .controls {
+      position: fixed; bottom: 20px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 2;
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(10px);
+      padding: 10px;
+      border-radius: 20px;
+      display: flex; gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="controls">
+    <button onclick="clearWaypoints()">清除</button>
+    <button onclick="saveRoute()">保存</button>
+    <button onclick="loadRoute()">加载</button>
+    <button onclick="exportRoute()">导出</button>
+    <button onclick="importRoute()">导入</button>
+  </div>
+
+  <script>
+    const map = new maplibregl.Map({
+      container: 'map',
+      style: {
+        version: 8,
+        sources: {
+          'osm-tiles': {
+            type: 'raster',
+            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: '© OpenStreetMap contributors'
+          }
+        },
+        layers: [
+          { id: 'osm-tiles-layer', type: 'raster', source: 'osm-tiles', minzoom: 0, maxzoom: 19 }
+        ]
+      },
+      center: [116.40, 39.90],
+      zoom: 12
+    });
+
+    const waypoints = {
+      type: 'FeatureCollection',
+      features: []
+    };
+    let waypointIdCounter = 0;
+
+    map.on('load', () => {
+      map.addSource('waypoints', {
+        type: 'geojson',
+        data: waypoints
+      });
+      map.addLayer({
+        id: 'waypoints-layer',
+        type: 'circle',
+        source: 'waypoints',
+        paint: {
+          'circle-radius': 8,
+          'circle-color': '#007aff',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#ffffff'
+        }
+      });
+
+      map.addSource('route-line', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      });
+      map.addLayer({
+        id: 'route-line-layer',
+        type: 'line',
+        source: 'route-line',
+        paint: {
+          'line-color': '#ff2d55',
+          'line-width': 3
+        }
+      });
+
+      map.on('click', (e) => {
+        addWaypoint([e.lngLat.lng, e.lngLat.lat]);
+      });
+
+      map.on('click', 'waypoints-layer', (e) => {
+        const feature = e.features[0];
+        const coords = feature.geometry.coordinates;
+        const props = feature.properties;
+        new maplibregl.Popup()
+          .setLngLat(coords)
+          .setHTML(`
+            <div>
+              <p><b>航点 ${props.id}</b></p>
+              <label>高度(m): <input type="number" id="alt-${props.id}" value="${props.alt || 50}" step="1" /></label><br>
+              <label>速度(m/s): <input type="number" id="spd-${props.id}" value="${props.speed || 5}" step="0.1" /></label><br>
+              <button onclick="updateWaypoint(${props.id})">更新</button>
+              <button onclick="deleteWaypoint(${props.id})">删除</button>
+            </div>
+          `)
+          .addTo(map);
+      });
+
+      map.on('mouseenter', 'waypoints-layer', () => map.getCanvas().style.cursor = 'pointer');
+      map.on('mouseleave', 'waypoints-layer', () => map.getCanvas().style.cursor = '');
+    });
+
+    function addWaypoint(coords, alt = 50, speed = 5) {
+      const id = waypointIdCounter++;
+      waypoints.features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: coords },
+        properties: { id, alt, speed }
+      });
+      updateDisplay();
+    }
+
+    function updateWaypoint(id) {
+      const altEl = document.getElementById(`alt-${id}`);
+      const spdEl = document.getElementById(`spd-${id}`);
+      if (altEl && spdEl) {
+        const wp = waypoints.features.find(f => f.properties.id === id);
+        if (wp) {
+          wp.properties.alt = parseFloat(altEl.value) || 50;
+          wp.properties.speed = parseFloat(spdEl.value) || 5;
+          updateDisplay();
+          const popup = document.querySelector('.maplibregl-popup');
+          if (popup) popup.remove();
+        }
+      }
+    }
+
+    function deleteWaypoint(id) {
+      waypoints.features = waypoints.features.filter(f => f.properties.id !== id);
+      updateDisplay();
+      const popup = document.querySelector('.maplibregl-popup');
+      if (popup) popup.remove();
+    }
+
+    function clearWaypoints() {
+      waypoints.features = [];
+      updateDisplay();
+    }
+
+    function updateDisplay() {
+      map.getSource('waypoints').setData(waypoints);
+      const sortedCoords = waypoints.features
+        .sort((a,b) => a.properties.id - b.properties.id)
+        .map(f => f.geometry.coordinates);
+      const routeGeoJSON = {
+        type: 'FeatureCollection',
+        features: sortedCoords.length > 1 ? [{
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: sortedCoords }
+        }] : []
+      };
+      map.getSource('route-line').setData(routeGeoJSON);
+    }
+
+    function saveRoute() {
+      localStorage.setItem('saved-route', JSON.stringify(waypoints));
+      alert('航线已保存');
+    }
+
+    function loadRoute() {
+      const saved = localStorage.getItem('saved-route');
+      if (saved) {
+        waypoints.features = JSON.parse(saved).features;
+        waypointIdCounter = waypoints.features.reduce((max, f) => Math.max(max, f.properties.id), 0) + 1;
+        updateDisplay();
+        alert('航线已加载');
+      } else {
+        alert('没有已保存的航线');
+      }
+    }
+
+    function exportRoute() {
+      const plan = {
+        fileType: 'Plan',
+        groundStation: 'WebPlanner',
+        mission: {
+          items: waypoints.features.map((f, idx) => ({
+            seq: idx,
+            command: 16,
+            frame: 3,
+            param1: 0, param2: 0, param3: 0,
+            param4: f.properties.alt,
+            x: f.geometry.coordinates[1],
+            y: f.geometry.coordinates[0],
+            z: f.properties.alt
+          }))
+        }
+      };
+      const blob = new Blob([JSON.stringify(plan, null, 2)], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'mission.plan';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function importRoute() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.plan,.json';
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const plan = JSON.parse(ev.target.result);
+            if (plan.mission && plan.mission.items) {
+              waypoints.features = plan.mission.items.map(item => ({
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [item.y, item.x] },
+                properties: { id: item.seq, alt: item.z || item.param4 || 50, speed: 5 }
+              }));
+              waypointIdCounter = waypoints.features.length;
+              updateDisplay();
+              alert('导入成功');
+            } else {
+              alert('文件格式不正确');
+            }
+          } catch (err) {
+            alert('解析失败: ' + err.message);
+          }
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    }
+  </script>
+</body>
+</html>
