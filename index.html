@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>CAAC 地面站 · 网页版</title>
+    <title>CAAC 地面站 · 移动版</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="manifest.json">
@@ -264,7 +264,7 @@
         · 双击画布添加航点<br>
         · 长按航点弹出菜单<br>
         · 点击线段可选中测角<br>
-        · 底部状态栏点击修改夹角
+        · 顶部状态栏点击修改夹角
     </div>
 </div>
 
@@ -632,10 +632,10 @@
         for (let x = ox; x < cw; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ch); ctx.stroke(); }
         for (let y = oy; y < ch; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cw, y); ctx.stroke(); }
 
-        // 罗盘（画布中间往下）
+        // 罗盘（底部偏上，距离底部 20px+半径）
         const r = 55;
         const cxr = cw / 2;
-        const cyr = ch * 0.7; // 70% 高度位置
+        const cyr = ch - r - 20; // 距离底部 20px
         ctx.strokeStyle = '#7f8c8d'; ctx.beginPath(); ctx.arc(cxr, cyr, r, 0, Math.PI*2); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr-r, cyr); ctx.lineTo(cxr+r, cyr); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr, cyr-r); ctx.lineTo(cxr, cyr+r); ctx.stroke();
@@ -858,7 +858,7 @@
         refreshCanvas();
     }
 
-    // ==================== 相对坐标编辑器 ====================
+    // ==================== 相对坐标编辑器（修复更新） ====================
     function openRelativeDialog() {
         if (addMode) disableAddMode();
         document.getElementById('relativeModal').classList.add('active');
@@ -881,6 +881,9 @@
         const ny = bp.y - distVal * Math.sin(rad);
         saveState();
         waypoints.push({ x: nx, y: ny, label, params: { height: 100, verticalSpeed: 5, horizontalSpeed: 15, turnMode: '曲线飞行' } });
+        // 更新相对坐标编辑器中的基准点列表和航点列表
+        updateBasePointCombo();
+        updateWaypointList();
         refreshCanvas();
     }
 
@@ -1199,8 +1202,22 @@
         refreshCanvas();
     });
 
+    // 缩放滑块：以画布中心为焦点缩放
     scaleSlider.addEventListener('input', () => {
-        scale = parseFloat(scaleSlider.value);
+        const newScale = parseFloat(scaleSlider.value);
+        const cw = canvas.clientWidth;
+        const ch = canvas.clientHeight;
+        const centerX = cw / 2;
+        const centerY = ch / 2;
+        // 当前中心点的世界坐标
+        const worldCenter = screenToWorld(centerX, centerY);
+        // 更新 scale
+        scale = newScale;
+        // 重新计算 panOffset，使中心点世界坐标对应的屏幕坐标仍为中心
+        panOffset = [
+            centerX - worldCenter.x * scale,
+            centerY - worldCenter.y * scale
+        ];
         refreshCanvas();
     });
 
