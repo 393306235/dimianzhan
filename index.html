@@ -639,7 +639,7 @@
         // 罗盘（紧贴底部工具栏上方：中心Y = ch - 52 - r - 2）
         const r = 55;
         const cxr = cw / 2;
-        const cyr = ch - 52 - r - 2;   // 即 ch - 140
+        const cyr = ch - 52 - r - 2;   // 即 ch - 160
         ctx.strokeStyle = '#7f8c8d'; ctx.beginPath(); ctx.arc(cxr, cyr, r, 0, Math.PI*2); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr-r, cyr); ctx.lineTo(cxr+r, cyr); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr, cyr-r); ctx.lineTo(cxr, cyr+r); ctx.stroke();
