@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>简易地面站 · 移动版</title>
+    <title>CAAC 地面站 · 移动版</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="manifest.json">
@@ -121,7 +121,6 @@
             border-radius: 8px;
             background: #3c3c3c;
         }
-        /* 工具栏内状态文本 */
         #status-text-inline {
             color: #f0f0f0;
             font-size: 0.85rem;
@@ -133,7 +132,7 @@
         /* 缩放滑块栏：顶部 52px 处 */
         #scale-bar {
             position: absolute;
-            top: 52px;          /* 系统状态栏 + 留白 */
+            top: 52px;
             left: 0; right: 0;
             height: 36px;
             background: rgba(28,28,30,0.8);
@@ -272,7 +271,6 @@
 
 <div id="canvas-container">
     <canvas id="mainCanvas"></canvas>
-    <!-- 底部工具栏 -->
     <div id="bottom-bar">
         <button class="tool-btn" id="menuBtn" onclick="togglePanel()">☰</button>
         <button class="tool-btn" onclick="undo()">↩</button>
@@ -283,7 +281,6 @@
         <button class="tool-btn danger" onclick="clearAllWaypoints()">✕</button>
         <span id="status-text-inline" onclick="modifySelectedAngle()">就绪</span>
     </div>
-    <!-- 缩放滑块栏（顶部 52px） -->
     <div id="scale-bar">
         <input type="range" id="scale-slider" min="0.5" max="20" step="0.1" value="1">
         <span id="scale-value">1.0x</span>
@@ -366,7 +363,7 @@
     function azimuth(x1, y1, x2, y2) {
         const dx = x2 - x1, dy = y2 - y1;
         if (Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12) return 0;
-        return (toDeg(Math.atan2(dx, dy)) + 360) % 360;
+        return (toDeg(Math.atan2(dx, dy)) + 360) % 360; // 北0 东90 南180 西270
     }
     function pointToSegmentDist(px, py, x1, y1, x2, y2) {
         const dx = x2 - x1, dy = y2 - y1;
@@ -513,6 +510,21 @@
         refreshCanvas();
     }
 
+    function deleteDirectionLines(index) {
+        // 删除指定航点的所有方向线
+        const label = waypoints[index].label;
+        const before = auxDirLines.length;
+        auxDirLines = auxDirLines.filter(dl => dl.vertexLabel !== label);
+        const after = auxDirLines.length;
+        if (after < before) {
+            dirtyIntersections = true;
+            refreshCanvas();
+            alert(`已删除 ${before - after} 条方向线`);
+        } else {
+            alert('该航点没有方向线');
+        }
+    }
+
     function clearAllCircles() {
         auxCircles = [];
         dirtyIntersections = true;
@@ -636,10 +648,10 @@
         for (let x = ox; x < cw; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ch); ctx.stroke(); }
         for (let y = oy; y < ch; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cw, y); ctx.stroke(); }
 
-        // 罗盘（紧贴底部工具栏上方：中心Y = ch - 52 - r - 2）
+        // 罗盘（距底部 160px）
         const r = 55;
         const cxr = cw / 2;
-        const cyr = ch - 52 - r - 2;   // 即 ch - 160
+        const cyr = ch - 160;
         ctx.strokeStyle = '#7f8c8d'; ctx.beginPath(); ctx.arc(cxr, cyr, r, 0, Math.PI*2); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr-r, cyr); ctx.lineTo(cxr+r, cyr); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr, cyr-r); ctx.lineTo(cxr, cyr+r); ctx.stroke();
@@ -831,7 +843,7 @@
         refreshCanvas();
     }
 
-    // ==================== 航线旋转 ====================
+    // ==================== 航线旋转（修复真实航向） ====================
     function updateRotateCombos() {
         const startSel = document.getElementById('rotateStart');
         const endSel = document.getElementById('rotateEnd');
@@ -849,7 +861,9 @@
         const end = waypoints.find(w => w.label === endLabel);
         if (!start || !end) return;
         const curAz = azimuth(start.x, start.y, end.x, end.y);
-        const delta = target - curAz;
+        let delta = target - curAz;
+        // 规范化到 [-180, 180]
+        delta = ((delta + 180) % 360 + 360) % 360 - 180;
         const cx = start.x, cy = start.y;
         const rad = toRad(delta);
         const cosA = Math.cos(rad), sinA = Math.sin(rad);
@@ -1183,11 +1197,12 @@
     }
     function clearLongPress() { if (longPressTimer) clearTimeout(longPressTimer); }
     function showWaypointMenu(index) {
-        const action = prompt(`航点 ${waypoints[index].label}:\n1.删除\n2.设为H点\n3.辅助圆\n4.方向线`, '');
+        const action = prompt(`航点 ${waypoints[index].label}:\n1.删除\n2.设为H点\n3.辅助圆\n4.方向线\n5.删除方向线`, '');
         if (action === '1') deleteWaypoint(index);
         else if (action === '2') setAsHome(index);
         else if (action === '3') addCircleForVertex(index);
         else if (action === '4') addDirectionLine(index);
+        else if (action === '5') deleteDirectionLines(index);
     }
 
     function toggleEdgeSelection(edge) {
