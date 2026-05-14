@@ -84,19 +84,21 @@
         }
         canvas { width: 100%; height: 100%; display: block; }
 
+        /* 顶部状态栏 */
         #status-bar {
             position: absolute;
-            bottom: 0;
+            top: 0;
             left: 0; right: 0;
             height: 44px;
-            background: #2d2d2d;
+            background: rgba(45,45,45,0.9);
+            backdrop-filter: blur(10px);
             color: #f0f0f0;
             display: flex;
             align-items: center;
             padding: 0 10px;
             font-size: 0.9rem;
             cursor: pointer;
-            border-top: 1px solid #444;
+            border-bottom: 1px solid #444;
             z-index: 15;
             gap: 10px;
         }
@@ -128,9 +130,10 @@
             flex-shrink: 0;
         }
 
+        /* 底部工具栏 */
         #bottom-bar {
             position: absolute;
-            bottom: 44px;
+            bottom: 0;
             left: 0; right: 0;
             background: rgba(28,28,30,0.85);
             backdrop-filter: blur(10px);
@@ -629,8 +632,10 @@
         for (let x = ox; x < cw; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ch); ctx.stroke(); }
         for (let y = oy; y < ch; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cw, y); ctx.stroke(); }
 
-        // 罗盘（8方向 + 度数）
-        const r = 55, cxr = cw - r - 12, cyr = r + 12;
+        // 罗盘（画布中间往下）
+        const r = 55;
+        const cxr = cw / 2;
+        const cyr = ch * 0.7; // 70% 高度位置
         ctx.strokeStyle = '#7f8c8d'; ctx.beginPath(); ctx.arc(cxr, cyr, r, 0, Math.PI*2); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr-r, cyr); ctx.lineTo(cxr+r, cyr); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr, cyr-r); ctx.lineTo(cxr, cyr+r); ctx.stroke();
@@ -1018,15 +1023,13 @@
         if (wpListLongPressTimer) clearTimeout(wpListLongPressTimer);
     }
 
-    // ==================== 触摸事件（关键修复） ====================
+    // ==================== 触摸事件 ====================
     function getCanvasTouch(e) {
-        // 用于 touchstart 和 touchmove，此时 e.touches[0] 存在
         const rect = canvas.getBoundingClientRect();
         return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
     }
 
     function getCanvasChangedTouch(e) {
-        // 用于 touchend，必须用 changedTouches
         const rect = canvas.getBoundingClientRect();
         const touch = e.changedTouches[0];
         return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
@@ -1034,7 +1037,6 @@
 
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
-        // 关闭面板（如果点在外面）
         const panel = document.getElementById('left-panel');
         if (panel.classList.contains('open')) {
             const touch = e.touches[0];
@@ -1043,7 +1045,6 @@
             }
         }
 
-        // 忽略多指
         if (e.touches.length !== 1) {
             touchMode = null;
             return;
@@ -1064,14 +1065,12 @@
         }
 
         clearLongPress();
-        // 辅助点拖动
         const auxIdx = getNearbyAux(world.x, world.y);
         if (auxIdx >= 0) {
             touchMode = 'drag-aux';
             draggingAuxIndex = auxIdx;
             return;
         }
-        // 航点拖动
         for (let i = 0; i < waypoints.length; i++) {
             const wp = waypoints[i];
             if (dist(world.x, world.y, wp.x, wp.y) <= 15 / scale) {
@@ -1084,7 +1083,6 @@
                 return;
             }
         }
-        // 线段选中
         const edges = getAllEdges();
         for (const edge of edges) {
             if (pointToSegmentDist(world.x, world.y, waypoints[edge.i1].x, waypoints[edge.i1].y, waypoints[edge.i2].x, waypoints[edge.i2].y) <= 12 / scale) {
@@ -1094,7 +1092,6 @@
                 return;
             }
         }
-        // 交点吸附
         if (showIntersections) {
             updateIntersectionsCache();
             for (const inter of intersectionsCache) {
@@ -1104,7 +1101,6 @@
                 }
             }
         }
-        // 平移
         touchMode = 'pan';
         panStart = { x: pt.x, y: pt.y, offsetX: panOffset[0], offsetY: panOffset[1] };
     }, { passive: false });
@@ -1134,18 +1130,15 @@
     }, { passive: false });
 
     canvas.addEventListener('touchend', (e) => {
-        e.preventDefault(); // 阻止后续 click 事件
+        e.preventDefault();
         clearLongPress();
         if (touchMode === 'drag-waypoint') {
             saveState();
         }
 
-        // 获取手指离开的位置（必须用 changedTouches）
         const pt = getCanvasChangedTouch(e);
         const now = Date.now();
 
-        // 合并了原 click 事件的功能：关闭面板、添加航点模式（通过双击）
-        // 关闭面板逻辑（如果之前 touchstart 没有处理，这里补充）
         const panel = document.getElementById('left-panel');
         if (panel.classList.contains('open')) {
             const touch = e.changedTouches[0];
@@ -1154,7 +1147,6 @@
             }
         }
 
-        // 处理双击添加航点
         if (touchMode === 'idle' || touchMode === 'pan') {
             if (lastTapPos && Math.abs(pt.x - lastTapPos.x) < 15 && Math.abs(pt.y - lastTapPos.y) < 15 && now - lastTapTime < 300) {
                 const world = screenToWorld(pt.x, pt.y);
@@ -1166,7 +1158,6 @@
             }
         }
 
-        // 处理 addMode 单次点击（如果不在双击中）
         if (addMode && !(lastTapPos && now - lastTapTime < 300)) {
             const world = screenToWorld(pt.x, pt.y);
             addWaypoint(world.x, world.y);
@@ -1208,7 +1199,6 @@
         refreshCanvas();
     });
 
-    // 缩放滑块
     scaleSlider.addEventListener('input', () => {
         scale = parseFloat(scaleSlider.value);
         refreshCanvas();
@@ -1219,14 +1209,12 @@
         scaleValue.textContent = scale.toFixed(1) + 'x';
     }
 
-    // 修复iOS输入框首次点击不弹键盘
     document.body.addEventListener('touchstart', (e) => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
             e.target.focus();
         }
     }, { passive: true });
 
-    // 初始化
     saveState();
     refreshCanvas();
 </script>
