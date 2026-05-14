@@ -635,7 +635,7 @@
         // 罗盘（底部偏上，距离底部 20px+半径）
         const r = 55;
         const cxr = cw / 2;
-        const cyr = ch - r - 55; // 距离底部 55px
+        const cyr = ch - r - 65; // 距离底部 65px
         ctx.strokeStyle = '#7f8c8d'; ctx.beginPath(); ctx.arc(cxr, cyr, r, 0, Math.PI*2); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr-r, cyr); ctx.lineTo(cxr+r, cyr); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr, cyr-r); ctx.lineTo(cxr, cyr+r); ctx.stroke();
