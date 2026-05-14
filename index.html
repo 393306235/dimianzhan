@@ -1018,21 +1018,23 @@
         if (wpListLongPressTimer) clearTimeout(wpListLongPressTimer);
     }
 
-    // ==================== 触摸事件 ====================
+    // ==================== 触摸事件（关键修复） ====================
     function getCanvasTouch(e) {
+        // 用于 touchstart 和 touchmove，此时 e.touches[0] 存在
         const rect = canvas.getBoundingClientRect();
         return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
     }
 
-    canvas.addEventListener('click', (e) => {
-        const panel = document.getElementById('left-panel');
-        if (panel.classList.contains('open') && !panel.contains(e.target)) {
-            closePanel();
-        }
-    });
+    function getCanvasChangedTouch(e) {
+        // 用于 touchend，必须用 changedTouches
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.changedTouches[0];
+        return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+    }
 
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
+        // 关闭面板（如果点在外面）
         const panel = document.getElementById('left-panel');
         if (panel.classList.contains('open')) {
             const touch = e.touches[0];
@@ -1041,7 +1043,11 @@
             }
         }
 
-        if (e.touches.length !== 1) return;
+        // 忽略多指
+        if (e.touches.length !== 1) {
+            touchMode = null;
+            return;
+        }
 
         const pt = getCanvasTouch(e);
         const world = screenToWorld(pt.x, pt.y);
@@ -1058,12 +1064,14 @@
         }
 
         clearLongPress();
+        // 辅助点拖动
         const auxIdx = getNearbyAux(world.x, world.y);
         if (auxIdx >= 0) {
             touchMode = 'drag-aux';
             draggingAuxIndex = auxIdx;
             return;
         }
+        // 航点拖动
         for (let i = 0; i < waypoints.length; i++) {
             const wp = waypoints[i];
             if (dist(world.x, world.y, wp.x, wp.y) <= 15 / scale) {
@@ -1076,6 +1084,7 @@
                 return;
             }
         }
+        // 线段选中
         const edges = getAllEdges();
         for (const edge of edges) {
             if (pointToSegmentDist(world.x, world.y, waypoints[edge.i1].x, waypoints[edge.i1].y, waypoints[edge.i2].x, waypoints[edge.i2].y) <= 12 / scale) {
@@ -1085,6 +1094,7 @@
                 return;
             }
         }
+        // 交点吸附
         if (showIntersections) {
             updateIntersectionsCache();
             for (const inter of intersectionsCache) {
@@ -1094,6 +1104,7 @@
                 }
             }
         }
+        // 平移
         touchMode = 'pan';
         panStart = { x: pt.x, y: pt.y, offsetX: panOffset[0], offsetY: panOffset[1] };
     }, { passive: false });
@@ -1123,11 +1134,28 @@
     }, { passive: false });
 
     canvas.addEventListener('touchend', (e) => {
+        e.preventDefault(); // 阻止后续 click 事件
         clearLongPress();
-        if (touchMode === 'drag-waypoint') saveState();
+        if (touchMode === 'drag-waypoint') {
+            saveState();
+        }
+
+        // 获取手指离开的位置（必须用 changedTouches）
+        const pt = getCanvasChangedTouch(e);
         const now = Date.now();
+
+        // 合并了原 click 事件的功能：关闭面板、添加航点模式（通过双击）
+        // 关闭面板逻辑（如果之前 touchstart 没有处理，这里补充）
+        const panel = document.getElementById('left-panel');
+        if (panel.classList.contains('open')) {
+            const touch = e.changedTouches[0];
+            if (!panel.contains(document.elementFromPoint(touch.clientX, touch.clientY))) {
+                closePanel();
+            }
+        }
+
+        // 处理双击添加航点
         if (touchMode === 'idle' || touchMode === 'pan') {
-            const pt = getCanvasTouch(e);
             if (lastTapPos && Math.abs(pt.x - lastTapPos.x) < 15 && Math.abs(pt.y - lastTapPos.y) < 15 && now - lastTapTime < 300) {
                 const world = screenToWorld(pt.x, pt.y);
                 addWaypoint(world.x, world.y);
@@ -1137,6 +1165,13 @@
                 lastTapPos = { x: pt.x, y: pt.y };
             }
         }
+
+        // 处理 addMode 单次点击（如果不在双击中）
+        if (addMode && !(lastTapPos && now - lastTapTime < 300)) {
+            const world = screenToWorld(pt.x, pt.y);
+            addWaypoint(world.x, world.y);
+        }
+
         touchMode = 'idle';
     });
 
@@ -1173,7 +1208,7 @@
         refreshCanvas();
     });
 
-    // 缩放滑块监听
+    // 缩放滑块
     scaleSlider.addEventListener('input', () => {
         scale = parseFloat(scaleSlider.value);
         refreshCanvas();
