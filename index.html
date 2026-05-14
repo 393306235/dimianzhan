@@ -84,7 +84,6 @@
         }
         canvas { width: 100%; height: 100%; display: block; }
 
-        /* 底部工具栏 */
         #bottom-bar {
             position: absolute;
             bottom: 0;
@@ -129,7 +128,6 @@
             cursor: pointer;
         }
 
-        /* 缩放滑块栏：顶部 52px 处 */
         #scale-bar {
             position: absolute;
             top: 52px;
@@ -248,7 +246,7 @@
         </div>
         <div class="row">
             <label>目标航向(°):</label>
-            <input type="number" id="rotateTarget" value="0" style="width:80px;">
+            <input type="number" id="rotateTarget" value="0" style="width:80px;" ontouchstart="this.focus()">
             <button onclick="rotateRoute()">旋转</button>
         </div>
     </div>
@@ -296,15 +294,15 @@
         </div>
         <div class="row">
             <label>方位角(°):</label>
-            <input type="number" id="relAzimuth" value="0">
+            <input type="number" id="relAzimuth" value="0" ontouchstart="this.focus()">
         </div>
         <div class="row">
             <label>距离(米):</label>
-            <input type="number" id="relDistance" value="100">
+            <input type="number" id="relDistance" value="100" ontouchstart="this.focus()">
         </div>
         <div class="row">
             <label>新标签:</label>
-            <input type="text" id="relLabel" value="">
+            <input type="text" id="relLabel" value="" ontouchstart="this.focus()">
         </div>
         <button onclick="addWaypointByRelative()">添加航点</button>
         <button onclick="closeRelativeDialog()">关闭</button>
@@ -353,8 +351,7 @@
     let isDraggingModal = false;
     let modalDragStart = { x: 0, y: 0, left: 0, top: 0 };
 
-    // 航点列表长按互换状态
-    let wpListPressStart = null;       // { x, y, index, time }
+    let wpListPressStart = null;
     let wpListLongPressHandled = false;
 
     // ==================== 工具函数 ====================
@@ -364,7 +361,8 @@
     function azimuth(x1, y1, x2, y2) {
         const dx = x2 - x1, dy = y2 - y1;
         if (Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12) return 0;
-        return (toDeg(Math.atan2(dx, dy)) + 360) % 360;
+        const angle = Math.atan2(dx, dy) * 180 / Math.PI;
+        return (angle + 360) % 360; // 北0 东90 南180 西270
     }
     function pointToSegmentDist(px, py, x1, y1, x2, y2) {
         const dx = x2 - x1, dy = y2 - y1;
@@ -503,6 +501,19 @@
         refreshCanvas();
     }
 
+    function deleteCirclesForVertex(index) {
+        const label = waypoints[index].label;
+        const before = auxCircles.length;
+        auxCircles = auxCircles.filter(c => !(c.centerType === 'vertex' && c.centerRef === label));
+        if (auxCircles.length < before) {
+            dirtyIntersections = true;
+            refreshCanvas();
+            alert(`已删除 ${before - auxCircles.length} 个辅助圆`);
+        } else {
+            alert('该航点没有辅助圆');
+        }
+    }
+
     function addDirectionLine(index) {
         const angle = prompt('输入方向角度（0-360°）:', '315');
         if (angle === null || isNaN(angle)) return;
@@ -515,11 +526,10 @@
         const label = waypoints[index].label;
         const before = auxDirLines.length;
         auxDirLines = auxDirLines.filter(dl => dl.vertexLabel !== label);
-        const after = auxDirLines.length;
-        if (after < before) {
+        if (auxDirLines.length < before) {
             dirtyIntersections = true;
             refreshCanvas();
-            alert(`已删除 ${before - after} 条方向线`);
+            alert(`已删除 ${before - auxDirLines.length} 条方向线`);
         } else {
             alert('该航点没有方向线');
         }
@@ -648,10 +658,8 @@
         for (let x = ox; x < cw; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ch); ctx.stroke(); }
         for (let y = oy; y < ch; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cw, y); ctx.stroke(); }
 
-        // 罗盘（距底部 160px）
-        const r = 55;
-        const cxr = cw / 2;
-        const cyr = ch - 160;
+        // 罗盘
+        const r = 55, cxr = cw / 2, cyr = ch - 160;
         ctx.strokeStyle = '#7f8c8d'; ctx.beginPath(); ctx.arc(cxr, cyr, r, 0, Math.PI*2); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr-r, cyr); ctx.lineTo(cxr+r, cyr); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr, cyr-r); ctx.lineTo(cxr, cyr+r); ctx.stroke();
@@ -673,7 +681,7 @@
             ctx.fillText(`${deg}°`, cxr+(r+22)*Math.cos(rad), cyr-(r+22)*Math.sin(rad));
         });
 
-        // 航线 + 标注方位角和距离
+        // 航线
         const edges = getAllEdges();
         edges.forEach(({i1,i2}) => {
             const wp1 = waypoints[i1], wp2 = waypoints[i2];
@@ -843,7 +851,7 @@
         refreshCanvas();
     }
 
-    // ==================== 航线旋转（修复真实航向） ====================
+    // ==================== 航线旋转（修复） ====================
     function updateRotateCombos() {
         const startSel = document.getElementById('rotateStart');
         const endSel = document.getElementById('rotateEnd');
@@ -862,6 +870,7 @@
         if (!start || !end) return;
         const curAz = azimuth(start.x, start.y, end.x, end.y);
         let delta = target - curAz;
+        // 规范化到 [-180, 180]
         delta = ((delta + 180) % 360 + 360) % 360 - 180;
         const cx = start.x, cy = start.y;
         const rad = toRad(delta);
@@ -910,12 +919,7 @@
         e.stopPropagation();
         isDraggingModal = true;
         const rect = modal.getBoundingClientRect();
-        modalDragStart = {
-            x: e.touches[0].clientX,
-            y: e.touches[0].clientY,
-            left: rect.left,
-            top: rect.top
-        };
+        modalDragStart = { x: e.touches[0].clientX, y: e.touches[0].clientY, left: rect.left, top: rect.top };
     });
     document.addEventListener('touchmove', (e) => {
         if (isDraggingModal) {
@@ -928,18 +932,16 @@
     }, { passive: false });
     document.addEventListener('touchend', () => { isDraggingModal = false; });
 
-    // ==================== 其他功能 ====================
+    // ==================== 其他 ====================
     function resetView() {
-        if (waypoints.length === 0) {
-            scale = 1; panOffset = [0, 0];
-        } else {
+        if (waypoints.length === 0) { scale = 1; panOffset = [0, 0]; }
+        else {
             const xs = waypoints.map(w => w.x), ys = waypoints.map(w => w.y);
             const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
             const cx = (minX+maxX)/2, cy = (minY+maxY)/2;
             const w = maxX - minX + 100, h = maxY - minY + 100;
             const cw = canvas.clientWidth, ch = canvas.clientHeight;
-            scale = Math.min(cw/w, ch/h, 2.0);
-            scale = Math.max(scale, 0.5);
+            scale = Math.min(cw/w, ch/h, 2.0); scale = Math.max(scale, 0.5);
             panOffset = [cw/2 - cx*scale, ch/2 - cy*scale];
         }
         refreshCanvas();
@@ -948,7 +950,7 @@
     function updateCircleListbox() {
         const list = document.getElementById('circleList');
         if (!list) return;
-        list.innerHTML = auxCircles.map((c,i) => `<div style="padding:2px;">圆${i+1} R=${c.radius}m</div>`).join('');
+        list.innerHTML = auxCircles.map((c,i) => `<div>圆${i+1} R=${c.radius}m</div>`).join('');
     }
 
     let selectedCircleIndex = -1;
@@ -959,20 +961,14 @@
 
     function togglePanel() { document.getElementById('left-panel').classList.toggle('open'); }
     function closePanel() { document.getElementById('left-panel').classList.remove('open'); }
-
-    function disableAddMode() {
-        addMode = false;
-        document.getElementById('addBtn').style.background = '';
-    }
+    function disableAddMode() { addMode = false; document.getElementById('addBtn').style.background = ''; }
     function toggleAddMode() {
-        addMode = !addMode;
-        auxMode = false;
+        addMode = !addMode; auxMode = false;
         document.getElementById('addBtn').style.background = addMode ? '#34c759' : '';
         document.getElementById('auxModeBtn').style.background = '';
     }
     function toggleAuxMode() {
-        auxMode = !auxMode;
-        addMode = false;
+        auxMode = !auxMode; addMode = false;
         document.getElementById('addBtn').style.background = '';
         document.getElementById('auxModeBtn').style.background = auxMode ? '#ff9500' : '';
     }
@@ -992,57 +988,35 @@
         refreshCanvas();
     }
 
-    // ==================== 航点列表长按互换（修复版） ====================
+    // 航点列表长按互换
     const wpList = document.getElementById('waypoint-list');
     wpList.addEventListener('touchstart', (e) => {
         const item = e.target.closest('div[data-index]');
-        if (!item) {
-            wpListPressStart = null;
-            return;
-        }
+        if (!item) { wpListPressStart = null; return; }
         const index = parseInt(item.dataset.index);
-        if (isNaN(index)) return;
-        wpListPressStart = {
-            x: e.touches[0].clientX,
-            y: e.touches[0].clientY,
-            index: index,
-            time: Date.now()
-        };
+        wpListPressStart = { x: e.touches[0].clientX, y: e.touches[0].clientY, index, time: Date.now() };
         wpListLongPressHandled = false;
     });
     wpList.addEventListener('touchmove', (e) => {
         if (!wpListPressStart) return;
         const dx = e.touches[0].clientX - wpListPressStart.x;
         const dy = e.touches[0].clientY - wpListPressStart.y;
-        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-            wpListPressStart = null; // 移动过大取消
-        }
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) wpListPressStart = null;
     });
     wpList.addEventListener('touchend', (e) => {
-        if (!wpListPressStart || wpListLongPressHandled) {
-            wpListPressStart = null;
-            wpListLongPressHandled = false;
-            return;
-        }
-        const elapsed = Date.now() - wpListPressStart.time;
-        if (elapsed >= 500) {
-            // 长按触发
+        if (!wpListPressStart || wpListLongPressHandled) { wpListPressStart = null; wpListLongPressHandled = false; return; }
+        if (Date.now() - wpListPressStart.time >= 500) {
             const idx = wpListPressStart.index;
-            const currentLabel = waypoints[idx].label;
-            const targetLabel = prompt(`将航点 ${currentLabel} 与哪个航点互换位置？(输入标签，如 H、1、2)`, '');
+            const targetLabel = prompt(`将航点 ${waypoints[idx].label} 与哪个航点互换？`, '');
             if (targetLabel) {
                 const targetIndex = waypoints.findIndex(w => w.label === targetLabel);
                 if (targetIndex >= 0 && targetIndex !== idx) {
                     saveState();
                     [waypoints[idx], waypoints[targetIndex]] = [waypoints[targetIndex], waypoints[idx]];
-                    // 更新选中状态
                     if (selectedWaypointIndex === idx) selectedWaypointIndex = targetIndex;
                     else if (selectedWaypointIndex === targetIndex) selectedWaypointIndex = idx;
-                    refreshCanvas();
-                    updateWaypointList();
-                } else {
-                    alert('未找到该航点或不能与自身互换');
-                }
+                    refreshCanvas(); updateWaypointList();
+                } else alert('未找到该航点或不能与自身互换');
             }
             wpListLongPressHandled = true;
         }
@@ -1054,11 +1028,19 @@
         const rect = canvas.getBoundingClientRect();
         return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
     }
-
     function getCanvasChangedTouch(e) {
         const rect = canvas.getBoundingClientRect();
         const touch = e.changedTouches[0];
         return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+    }
+
+    // 查找重叠航点（距离<20/scale）
+    function findOverlappingWaypoints(wx, wy) {
+        const th = 20 / scale;
+        return waypoints.reduce((arr, wp, i) => {
+            if (dist(wx, wy, wp.x, wp.y) <= th) arr.push(i);
+            return arr;
+        }, []);
     }
 
     canvas.addEventListener('touchstart', (e) => {
@@ -1066,65 +1048,55 @@
         const panel = document.getElementById('left-panel');
         if (panel.classList.contains('open')) {
             const touch = e.touches[0];
-            if (!panel.contains(document.elementFromPoint(touch.clientX, touch.clientY))) {
-                closePanel();
-            }
+            if (!panel.contains(document.elementFromPoint(touch.clientX, touch.clientY))) closePanel();
         }
-
-        if (e.touches.length !== 1) {
-            touchMode = null;
-            return;
-        }
+        if (e.touches.length !== 1) { touchMode = null; return; }
 
         const pt = getCanvasTouch(e);
         const world = screenToWorld(pt.x, pt.y);
 
-        if (addMode) {
-            addWaypoint(world.x, world.y);
-            return;
-        }
-        if (auxMode) {
-            addAuxPoint(world.x, world.y);
-            auxMode = false;
-            document.getElementById('auxModeBtn').style.background = '';
-            return;
-        }
+        if (addMode) { addWaypoint(world.x, world.y); return; }
+        if (auxMode) { addAuxPoint(world.x, world.y); auxMode = false; document.getElementById('auxModeBtn').style.background = ''; return; }
 
         clearLongPress();
         const auxIdx = getNearbyAux(world.x, world.y);
-        if (auxIdx >= 0) {
-            touchMode = 'drag-aux';
-            draggingAuxIndex = auxIdx;
+        if (auxIdx >= 0) { touchMode = 'drag-aux'; draggingAuxIndex = auxIdx; return; }
+
+        const overlapping = findOverlappingWaypoints(world.x, world.y);
+        if (overlapping.length === 1) {
+            const i = overlapping[0];
+            touchMode = 'drag-waypoint'; draggingWaypointIndex = i; selectedWaypointIndex = i;
+            longPressTarget = { type: 'waypoint', index: i };
+            startLongPress(e.touches[0]);
+            refreshCanvas();
             return;
-        }
-        for (let i = 0; i < waypoints.length; i++) {
-            const wp = waypoints[i];
-            if (dist(world.x, world.y, wp.x, wp.y) <= 15 / scale) {
-                touchMode = 'drag-waypoint';
-                draggingWaypointIndex = i;
-                selectedWaypointIndex = i;
-                longPressTarget = { type: 'waypoint', index: i };
-                startLongPress(e.touches[0]);
-                refreshCanvas();
-                return;
+        } else if (overlapping.length > 1) {
+            // 多个重叠，弹出选择
+            const labels = overlapping.map(i => waypoints[i].label).join(', ');
+            const choice = prompt(`重叠航点：${labels}。输入标签选择：`, '');
+            if (choice) {
+                const chosenIndex = waypoints.findIndex(w => w.label === choice);
+                if (chosenIndex >= 0 && overlapping.includes(chosenIndex)) {
+                    touchMode = 'drag-waypoint'; draggingWaypointIndex = chosenIndex; selectedWaypointIndex = chosenIndex;
+                    longPressTarget = { type: 'waypoint', index: chosenIndex };
+                    startLongPress(e.touches[0]);
+                    refreshCanvas();
+                    return;
+                }
             }
+            touchMode = 'idle'; return;
         }
+
         const edges = getAllEdges();
         for (const edge of edges) {
-            if (pointToSegmentDist(world.x, world.y, waypoints[edge.i1].x, waypoints[edge.i1].y, waypoints[edge.i2].x, waypoints[edge.i2].y) <= 12 / scale) {
-                toggleEdgeSelection(edge);
-                refreshCanvas();
-                touchMode = 'idle';
-                return;
+            if (pointToSegmentDist(world.x, world.y, waypoints[edge.i1].x, waypoints[edge.i1].y, waypoints[edge.i2].x, waypoints[edge.i2].y) <= 12/scale) {
+                toggleEdgeSelection(edge); refreshCanvas(); touchMode = 'idle'; return;
             }
         }
         if (showIntersections) {
             updateIntersectionsCache();
             for (const inter of intersectionsCache) {
-                if (dist(world.x, world.y, inter.x, inter.y) <= 12 / scale) {
-                    addWaypoint(inter.x, inter.y);
-                    return;
-                }
+                if (dist(world.x, world.y, inter.x, inter.y) <= 12/scale) { addWaypoint(inter.x, inter.y); return; }
             }
         }
         touchMode = 'pan';
@@ -1137,17 +1109,9 @@
         const pt = getCanvasTouch(e);
         if (touchMode === 'drag-waypoint' || touchMode === 'drag-aux') {
             const world = screenToWorld(pt.x, pt.y);
-            if (touchMode === 'drag-waypoint') {
-                waypoints[draggingWaypointIndex].x = world.x;
-                waypoints[draggingWaypointIndex].y = world.y;
-                updateAuxConnections();
-            } else {
-                auxPoints[draggingAuxIndex].x = world.x;
-                auxPoints[draggingAuxIndex].y = world.y;
-                updateAuxConnections();
-            }
-            clearLongPress();
-            refreshCanvas();
+            if (touchMode === 'drag-waypoint') { waypoints[draggingWaypointIndex].x = world.x; waypoints[draggingWaypointIndex].y = world.y; updateAuxConnections(); }
+            else { auxPoints[draggingAuxIndex].x = world.x; auxPoints[draggingAuxIndex].y = world.y; updateAuxConnections(); }
+            clearLongPress(); refreshCanvas();
         } else if (touchMode === 'pan') {
             panOffset[0] = panStart.offsetX + (pt.x - panStart.x);
             panOffset[1] = panStart.offsetY + (pt.y - panStart.y);
@@ -1158,100 +1122,59 @@
     canvas.addEventListener('touchend', (e) => {
         e.preventDefault();
         clearLongPress();
-        if (touchMode === 'drag-waypoint') {
-            saveState();
-        }
-
+        if (touchMode === 'drag-waypoint') saveState();
         const pt = getCanvasChangedTouch(e);
         const now = Date.now();
-
         const panel = document.getElementById('left-panel');
         if (panel.classList.contains('open')) {
             const touch = e.changedTouches[0];
-            if (!panel.contains(document.elementFromPoint(touch.clientX, touch.clientY))) {
-                closePanel();
-            }
+            if (!panel.contains(document.elementFromPoint(touch.clientX, touch.clientY))) closePanel();
         }
-
         if (touchMode === 'idle' || touchMode === 'pan') {
             if (lastTapPos && Math.abs(pt.x - lastTapPos.x) < 15 && Math.abs(pt.y - lastTapPos.y) < 15 && now - lastTapTime < 300) {
                 const world = screenToWorld(pt.x, pt.y);
                 addWaypoint(world.x, world.y);
                 lastTapTime = 0;
-            } else {
-                lastTapTime = now;
-                lastTapPos = { x: pt.x, y: pt.y };
-            }
+            } else { lastTapTime = now; lastTapPos = { x: pt.x, y: pt.y }; }
         }
-
         if (addMode && !(lastTapPos && now - lastTapTime < 300)) {
             const world = screenToWorld(pt.x, pt.y);
             addWaypoint(world.x, world.y);
         }
-
         touchMode = 'idle';
     });
 
-    function startLongPress(touch) {
-        clearLongPress();
-        longPressTimer = setTimeout(() => {
-            if (longPressTarget && longPressTarget.type === 'waypoint') {
-                showWaypointMenu(longPressTarget.index);
-            }
-            longPressTarget = null;
-        }, 500);
-    }
+    function startLongPress(touch) { clearLongPress(); longPressTimer = setTimeout(() => { if (longPressTarget) showWaypointMenu(longPressTarget.index); longPressTarget = null; }, 500); }
     function clearLongPress() { if (longPressTimer) clearTimeout(longPressTimer); }
     function showWaypointMenu(index) {
-        const action = prompt(`航点 ${waypoints[index].label}:\n1.删除\n2.设为H点\n3.辅助圆\n4.方向线\n5.删除方向线`, '');
+        const action = prompt(`航点 ${waypoints[index].label}:\n1.删除\n2.设为H点\n3.辅助圆\n4.方向线\n5.删除方向线\n6.删除辅助圆`, '');
         if (action === '1') deleteWaypoint(index);
         else if (action === '2') setAsHome(index);
         else if (action === '3') addCircleForVertex(index);
         else if (action === '4') addDirectionLine(index);
         else if (action === '5') deleteDirectionLines(index);
+        else if (action === '6') deleteCirclesForVertex(index);
     }
 
     function toggleEdgeSelection(edge) {
         const pair = { i1: edge.i1, i2: edge.i2 };
         const exists = selectedEdges.findIndex(e => (e.i1===pair.i1&&e.i2===pair.i2)||(e.i1===pair.i2&&e.i2===pair.i1));
         if (exists >= 0) selectedEdges.splice(exists, 1);
-        else {
-            if (selectedEdges.length >= 2) selectedEdges.shift();
-            selectedEdges.push(pair);
-        }
+        else { if (selectedEdges.length >= 2) selectedEdges.shift(); selectedEdges.push(pair); }
     }
 
-    document.getElementById('showIntersectionsCheck').addEventListener('change', (e) => {
-        showIntersections = e.target.checked;
-        refreshCanvas();
-    });
+    document.getElementById('showIntersectionsCheck').addEventListener('change', (e) => { showIntersections = e.target.checked; refreshCanvas(); });
 
-    // 缩放滑块：以画布中心为焦点缩放
     scaleSlider.addEventListener('input', () => {
         const newScale = parseFloat(scaleSlider.value);
-        const cw = canvas.clientWidth;
-        const ch = canvas.clientHeight;
-        const centerX = cw / 2;
-        const centerY = ch / 2;
-        const worldCenter = screenToWorld(centerX, centerY);
+        const cw = canvas.clientWidth, ch = canvas.clientHeight;
+        const worldCenter = screenToWorld(cw/2, ch/2);
         scale = newScale;
-        panOffset = [
-            centerX - worldCenter.x * scale,
-            centerY - worldCenter.y * scale
-        ];
+        panOffset = [cw/2 - worldCenter.x * scale, ch/2 - worldCenter.y * scale];
         refreshCanvas();
     });
 
-    function updateScaleDisplay() {
-        scaleSlider.value = scale;
-        scaleValue.textContent = scale.toFixed(1) + 'x';
-    }
-
-    document.body.addEventListener('touchstart', (e) => {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
-            e.target.focus();
-        }
-    }, { passive: true });
+    function updateScaleDisplay() { scaleSlider.value = scale; scaleValue.textContent = scale.toFixed(1) + 'x'; }
 
     saveState();
     refreshCanvas();
