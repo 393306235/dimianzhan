@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>CAAC 地面站 · 网页版</title>
+    <title>CAAC 地面站 · 移动版</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="manifest.json">
@@ -84,52 +84,6 @@
         }
         canvas { width: 100%; height: 100%; display: block; }
 
-        /* 顶部状态栏 */
-        #status-bar {
-            position: absolute;
-            top: 0;
-            left: 0; right: 0;
-            height: 44px;
-            background: rgba(45,45,45,0.9);
-            backdrop-filter: blur(10px);
-            color: #f0f0f0;
-            display: flex;
-            align-items: center;
-            padding: 0 10px;
-            font-size: 0.9rem;
-            cursor: pointer;
-            border-bottom: 1px solid #444;
-            z-index: 15;
-            gap: 10px;
-        }
-        #status-text {
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-        #scale-slider {
-            flex: 1;
-            height: 6px;
-            -webkit-appearance: none;
-            background: #555;
-            border-radius: 3px;
-            outline: none;
-        }
-        #scale-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 28px;
-            height: 28px;
-            background: var(--accent);
-            border-radius: 50%;
-            border: 2px solid white;
-            cursor: pointer;
-        }
-        #scale-value {
-            width: 55px;
-            text-align: center;
-            font-size: 0.85rem;
-            flex-shrink: 0;
-        }
-
         /* 底部工具栏 */
         #bottom-bar {
             position: absolute;
@@ -166,6 +120,54 @@
             font-size: 1.5rem; padding: 6px 12px;
             border-radius: 8px;
             background: #3c3c3c;
+        }
+        /* 工具栏内状态文本 */
+        #status-text-inline {
+            color: #f0f0f0;
+            font-size: 0.85rem;
+            margin-left: 10px;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+
+        /* 缩放滑块栏：下移25px，原 bottom:52px → 27px */
+        #scale-bar {
+            position: absolute;
+            bottom: 27px;   /* 原本 52px，往下移动 25px */
+            left: 0; right: 0;
+            height: 36px;
+            background: rgba(28,28,30,0.8);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            gap: 8px;
+            border-top: 1px solid rgba(255,255,255,0.15);
+            z-index: 19;
+        }
+        #scale-bar input[type="range"] {
+            flex: 1;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #555;
+            border-radius: 3px;
+            outline: none;
+        }
+        #scale-bar input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 28px;
+            height: 28px;
+            background: var(--accent);
+            border-radius: 50%;
+            border: 2px solid white;
+            cursor: pointer;
+        }
+        #scale-value {
+            width: 48px;
+            text-align: center;
+            font-size: 0.85rem;
+            color: #f0f0f0;
+            flex-shrink: 0;
         }
 
         .modal {
@@ -264,17 +266,13 @@
         · 双击画布添加航点<br>
         · 长按航点弹出菜单<br>
         · 点击线段可选中测角<br>
-        · 顶部状态栏点击修改夹角
+        · 点击状态文本修改夹角
     </div>
 </div>
 
 <div id="canvas-container">
     <canvas id="mainCanvas"></canvas>
-    <div id="status-bar">
-        <span id="status-text" onclick="modifySelectedAngle()">就绪</span>
-        <input type="range" id="scale-slider" min="0.5" max="20" step="0.1" value="1">
-        <span id="scale-value">1.0x</span>
-    </div>
+    <!-- 底部工具栏 -->
     <div id="bottom-bar">
         <button class="tool-btn" id="menuBtn" onclick="togglePanel()">☰</button>
         <button class="tool-btn" onclick="undo()">↩</button>
@@ -283,6 +281,12 @@
         <button class="tool-btn" onclick="openRelativeDialog()">⊕</button>
         <button class="tool-btn" onclick="showWaypointList()">☷</button>
         <button class="tool-btn danger" onclick="clearAllWaypoints()">✕</button>
+        <span id="status-text-inline" onclick="modifySelectedAngle()">就绪</span>
+    </div>
+    <!-- 缩放滑块栏（下移25px） -->
+    <div id="scale-bar">
+        <input type="range" id="scale-slider" min="0.5" max="20" step="0.1" value="1">
+        <span id="scale-value">1.0x</span>
     </div>
 </div>
 
@@ -317,7 +321,7 @@
     const canvas = document.getElementById('mainCanvas');
     const ctx = canvas.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
-    const statusText = document.getElementById('status-text');
+    const statusText = document.getElementById('status-text-inline');
     const scaleSlider = document.getElementById('scale-slider');
     const scaleValue = document.getElementById('scale-value');
 
@@ -632,10 +636,10 @@
         for (let x = ox; x < cw; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ch); ctx.stroke(); }
         for (let y = oy; y < ch; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cw, y); ctx.stroke(); }
 
-        // 罗盘（底部偏上，距离底部 20px+半径）
+        // 罗盘（距离底部 85px）
         const r = 55;
         const cxr = cw / 2;
-        const cyr = ch - r - 75; // 距离底部 75px
+        const cyr = ch - 85;   // 罗盘中心距底部 85px
         ctx.strokeStyle = '#7f8c8d'; ctx.beginPath(); ctx.arc(cxr, cyr, r, 0, Math.PI*2); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr-r, cyr); ctx.lineTo(cxr+r, cyr); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr, cyr-r); ctx.lineTo(cxr, cyr+r); ctx.stroke();
@@ -858,7 +862,7 @@
         refreshCanvas();
     }
 
-    // ==================== 相对坐标编辑器（修复更新） ====================
+    // ==================== 相对坐标编辑器 ====================
     function openRelativeDialog() {
         if (addMode) disableAddMode();
         document.getElementById('relativeModal').classList.add('active');
@@ -881,7 +885,6 @@
         const ny = bp.y - distVal * Math.sin(rad);
         saveState();
         waypoints.push({ x: nx, y: ny, label, params: { height: 100, verticalSpeed: 5, horizontalSpeed: 15, turnMode: '曲线飞行' } });
-        // 更新相对坐标编辑器中的基准点列表和航点列表
         updateBasePointCombo();
         updateWaypointList();
         refreshCanvas();
@@ -1209,11 +1212,8 @@
         const ch = canvas.clientHeight;
         const centerX = cw / 2;
         const centerY = ch / 2;
-        // 当前中心点的世界坐标
         const worldCenter = screenToWorld(centerX, centerY);
-        // 更新 scale
         scale = newScale;
-        // 重新计算 panOffset，使中心点世界坐标对应的屏幕坐标仍为中心
         panOffset = [
             centerX - worldCenter.x * scale,
             centerY - worldCenter.y * scale
