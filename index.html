@@ -353,8 +353,9 @@
     let isDraggingModal = false;
     let modalDragStart = { x: 0, y: 0, left: 0, top: 0 };
 
-    let wpListLongPressTimer = null;
-    let wpListTouchStartInfo = null;
+    // 航点列表长按互换状态
+    let wpListPressStart = null;       // { x, y, index, time }
+    let wpListLongPressHandled = false;
 
     // ==================== 工具函数 ====================
     function toRad(deg) { return deg * Math.PI / 180; }
@@ -363,7 +364,7 @@
     function azimuth(x1, y1, x2, y2) {
         const dx = x2 - x1, dy = y2 - y1;
         if (Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12) return 0;
-        return (toDeg(Math.atan2(dx, dy)) + 360) % 360; // 北0 东90 南180 西270
+        return (toDeg(Math.atan2(dx, dy)) + 360) % 360;
     }
     function pointToSegmentDist(px, py, x1, y1, x2, y2) {
         const dx = x2 - x1, dy = y2 - y1;
@@ -511,7 +512,6 @@
     }
 
     function deleteDirectionLines(index) {
-        // 删除指定航点的所有方向线
         const label = waypoints[index].label;
         const before = auxDirLines.length;
         auxDirLines = auxDirLines.filter(dl => dl.vertexLabel !== label);
@@ -862,7 +862,6 @@
         if (!start || !end) return;
         const curAz = azimuth(start.x, start.y, end.x, end.y);
         let delta = target - curAz;
-        // 规范化到 [-180, 180]
         delta = ((delta + 180) % 360 + 360) % 360 - 180;
         const cx = start.x, cy = start.y;
         const rad = toRad(delta);
@@ -993,55 +992,62 @@
         refreshCanvas();
     }
 
-    // 航点列表长按互换
+    // ==================== 航点列表长按互换（修复版） ====================
     const wpList = document.getElementById('waypoint-list');
     wpList.addEventListener('touchstart', (e) => {
         const item = e.target.closest('div[data-index]');
-        if (!item) return;
+        if (!item) {
+            wpListPressStart = null;
+            return;
+        }
         const index = parseInt(item.dataset.index);
-        wpListTouchStartInfo = {
+        if (isNaN(index)) return;
+        wpListPressStart = {
             x: e.touches[0].clientX,
             y: e.touches[0].clientY,
             index: index,
             time: Date.now()
         };
-        clearWpListLongPress();
-        wpListLongPressTimer = setTimeout(() => {
-            if (wpListTouchStartInfo) {
-                const idx = wpListTouchStartInfo.index;
-                const targetLabel = prompt(`将航点 ${waypoints[idx].label} 与哪个航点互换位置？(输入标签，如 H、1、2)`, '');
-                if (targetLabel) {
-                    const targetIndex = waypoints.findIndex(w => w.label === targetLabel);
-                    if (targetIndex >= 0 && targetIndex !== idx) {
-                        saveState();
-                        [waypoints[idx], waypoints[targetIndex]] = [waypoints[targetIndex], waypoints[idx]];
-                        refreshCanvas();
-                        updateWaypointList();
-                    } else {
-                        alert('未找到该航点或不能与自身互换');
-                    }
-                }
-            }
-            wpListTouchStartInfo = null;
-        }, 500);
+        wpListLongPressHandled = false;
     });
     wpList.addEventListener('touchmove', (e) => {
-        if (wpListTouchStartInfo) {
-            const dx = e.touches[0].clientX - wpListTouchStartInfo.x;
-            const dy = e.touches[0].clientY - wpListTouchStartInfo.y;
-            if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-                clearWpListLongPress();
-                wpListTouchStartInfo = null;
-            }
+        if (!wpListPressStart) return;
+        const dx = e.touches[0].clientX - wpListPressStart.x;
+        const dy = e.touches[0].clientY - wpListPressStart.y;
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+            wpListPressStart = null; // 移动过大取消
         }
     });
-    wpList.addEventListener('touchend', () => {
-        clearWpListLongPress();
-        wpListTouchStartInfo = null;
+    wpList.addEventListener('touchend', (e) => {
+        if (!wpListPressStart || wpListLongPressHandled) {
+            wpListPressStart = null;
+            wpListLongPressHandled = false;
+            return;
+        }
+        const elapsed = Date.now() - wpListPressStart.time;
+        if (elapsed >= 500) {
+            // 长按触发
+            const idx = wpListPressStart.index;
+            const currentLabel = waypoints[idx].label;
+            const targetLabel = prompt(`将航点 ${currentLabel} 与哪个航点互换位置？(输入标签，如 H、1、2)`, '');
+            if (targetLabel) {
+                const targetIndex = waypoints.findIndex(w => w.label === targetLabel);
+                if (targetIndex >= 0 && targetIndex !== idx) {
+                    saveState();
+                    [waypoints[idx], waypoints[targetIndex]] = [waypoints[targetIndex], waypoints[idx]];
+                    // 更新选中状态
+                    if (selectedWaypointIndex === idx) selectedWaypointIndex = targetIndex;
+                    else if (selectedWaypointIndex === targetIndex) selectedWaypointIndex = idx;
+                    refreshCanvas();
+                    updateWaypointList();
+                } else {
+                    alert('未找到该航点或不能与自身互换');
+                }
+            }
+            wpListLongPressHandled = true;
+        }
+        wpListPressStart = null;
     });
-    function clearWpListLongPress() {
-        if (wpListLongPressTimer) clearTimeout(wpListLongPressTimer);
-    }
 
     // ==================== 触摸事件 ====================
     function getCanvasTouch(e) {
