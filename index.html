@@ -130,10 +130,10 @@
             cursor: pointer;
         }
 
-        /* 缩放滑块栏：下移25px，原 bottom:52px → 27px */
+        /* 缩放滑块栏：顶部 52px 处 */
         #scale-bar {
             position: absolute;
-            bottom: 27px;   /* 原本 52px，往下移动 25px */
+            top: 52px;          /* 系统状态栏 + 留白 */
             left: 0; right: 0;
             height: 36px;
             background: rgba(28,28,30,0.8);
@@ -142,7 +142,7 @@
             align-items: center;
             padding: 0 10px;
             gap: 8px;
-            border-top: 1px solid rgba(255,255,255,0.15);
+            border-bottom: 1px solid rgba(255,255,255,0.15);
             z-index: 19;
         }
         #scale-bar input[type="range"] {
@@ -283,7 +283,7 @@
         <button class="tool-btn danger" onclick="clearAllWaypoints()">✕</button>
         <span id="status-text-inline" onclick="modifySelectedAngle()">就绪</span>
     </div>
-    <!-- 缩放滑块栏（下移25px） -->
+    <!-- 缩放滑块栏（顶部 52px） -->
     <div id="scale-bar">
         <input type="range" id="scale-slider" min="0.5" max="20" step="0.1" value="1">
         <span id="scale-value">1.0x</span>
@@ -636,10 +636,10 @@
         for (let x = ox; x < cw; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ch); ctx.stroke(); }
         for (let y = oy; y < ch; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cw, y); ctx.stroke(); }
 
-        // 罗盘（距离底部 85px）
+        // 罗盘（紧贴底部工具栏上方：中心Y = ch - 52 - r - 2）
         const r = 55;
         const cxr = cw / 2;
-        const cyr = ch - 85;   // 罗盘中心距底部 85px
+        const cyr = ch - 52 - r - 2;   // 即 ch - 109
         ctx.strokeStyle = '#7f8c8d'; ctx.beginPath(); ctx.arc(cxr, cyr, r, 0, Math.PI*2); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr-r, cyr); ctx.lineTo(cxr+r, cyr); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr, cyr-r); ctx.lineTo(cxr, cyr+r); ctx.stroke();
