@@ -256,7 +256,7 @@
     let draggingWaypointIndex = null;
     let draggingAuxIndex = null;
     let panStart = null;
-    let overlapChosen = false; // 重叠选择后不再弹出菜单
+    let overlapChosen = false;
 
     let isDraggingModal = false;
     let modalDragStart = { x: 0, y: 0, left: 0, top: 0 };
@@ -268,10 +268,7 @@
     function loadWaypoints() {
         const saved = localStorage.getItem('gcs-waypoints');
         if (saved) {
-            try {
-                waypoints = JSON.parse(saved);
-                // 简单恢复，不清除辅助图形等
-            } catch(e) {}
+            try { waypoints = JSON.parse(saved); } catch(e) {}
         }
     }
     function saveWaypoints() {
@@ -309,8 +306,7 @@
             historyIndex--;
             waypoints = JSON.parse(JSON.stringify(history[historyIndex]));
             selectedWaypointIndex = null; selectedEdges = [];
-            refreshCanvas();
-            saveWaypoints();
+            refreshCanvas(); saveWaypoints();
         }
     }
     function redo() {
@@ -318,8 +314,7 @@
             historyIndex++;
             waypoints = JSON.parse(JSON.stringify(history[historyIndex]));
             selectedWaypointIndex = null; selectedEdges = [];
-            refreshCanvas();
-            saveWaypoints();
+            refreshCanvas(); saveWaypoints();
         }
     }
 
@@ -392,6 +387,18 @@
         const label = `A${auxPoints.length + 1}`;
         auxPoints.push({ x, y, label });
         auxConnections.set(auxPoints.length - 1, new Set());
+        dirtyIntersections = true; refreshCanvas();
+    }
+    function deleteAuxPoint(index) {
+        if (index == null || index >= auxPoints.length) return;
+        auxPoints.splice(index, 1);
+        auxConnections.delete(index);
+        // 重新映射连接
+        const newMap = new Map();
+        for (let i = 0; i < auxPoints.length; i++) {
+            newMap.set(i, auxConnections.get(i + (i >= index ? 1 : 0)) || new Set());
+        }
+        auxConnections = newMap;
         dirtyIntersections = true; refreshCanvas();
     }
     function updateAuxConnections() {
@@ -518,7 +525,7 @@
         for (let x = ox; x < cw; x += gs) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,ch); ctx.stroke(); }
         for (let y = oy; y < ch; y += gs) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cw,y); ctx.stroke(); }
 
-        // 罗盘
+        // 罗盘（修复文字重叠）
         const r = 55, cxr = cw/2, cyr = ch - 160;
         ctx.strokeStyle = '#7f8c8d'; ctx.beginPath(); ctx.arc(cxr, cyr, r, 0, Math.PI*2); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(cxr-r, cyr); ctx.lineTo(cxr+r, cyr); ctx.stroke();
@@ -528,17 +535,19 @@
             ctx.beginPath(); ctx.moveTo(cxr+(r-6)*Math.cos(rad), cyr-(r-6)*Math.sin(rad));
             ctx.lineTo(cxr+r*Math.cos(rad), cyr-r*Math.sin(rad)); ctx.stroke();
         }
+        // 方向字母 (半径+16)
         const dirs = ['N','NE','E','SE','S','SW','W','NW'];
         const angs = [0,45,90,135,180,225,270,315];
         ctx.font = 'bold 11px Arial'; ctx.fillStyle = '#2c3e50'; ctx.textAlign = 'center';
         dirs.forEach((d,i) => {
             const rad = toRad(90 - angs[i]);
-            ctx.fillText(d, cxr+(r+14)*Math.cos(rad), cyr-(r+14)*Math.sin(rad)-4);
+            ctx.fillText(d, cxr+(r+16)*Math.cos(rad), cyr-(r+16)*Math.sin(rad));
         });
+        // 度数 (半径+30)
         ctx.font = '8px Arial'; ctx.fillStyle = '#555';
         angs.forEach((deg,i) => {
             const rad = toRad(90 - deg);
-            ctx.fillText(`${deg}°`, cxr+(r+26)*Math.cos(rad), cyr-(r+26)*Math.sin(rad)+4);
+            ctx.fillText(`${deg}°`, cxr+(r+30)*Math.cos(rad), cyr-(r+30)*Math.sin(rad));
         });
 
         // 所有可选线段（航线+方向线）
@@ -552,6 +561,14 @@
             if (seg.type==='dirline') ctx.setLineDash([6,4]);
             ctx.beginPath(); ctx.moveTo(sp1.x, sp1.y); ctx.lineTo(sp2.x, sp2.y); ctx.stroke();
             ctx.setLineDash([]);
+            // 标注方位角和距离（仅航线）
+            if (seg.type === 'route') {
+                const az = azimuth(p1.x, p1.y, p2.x, p2.y);
+                const d = dist(p1.x, p1.y, p2.x, p2.y);
+                const mx = (sp1.x + sp2.x)/2, my = (sp1.y + sp2.y)/2;
+                ctx.fillStyle = '#e67e22'; ctx.font = 'bold 8px Arial';
+                ctx.fillText(`${az.toFixed(0)}° ${d.toFixed(1)}m`, mx, my - 8);
+            }
         });
 
         // 航点
@@ -570,19 +587,26 @@
             const sp = worldToScreen(center.x, center.y);
             ctx.strokeStyle='green'; ctx.lineWidth=2; ctx.setLineDash([4,2]);
             ctx.beginPath(); ctx.arc(sp.x, sp.y, c.radius*scale, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+            // 显示米数
+            ctx.fillStyle='green'; ctx.font='bold 9px Arial';
+            ctx.fillText(`${Math.round(c.radius)}m`, sp.x, sp.y);
         });
 
+        // 交点（十字形）
         if(showIntersections){
             updateIntersectionsCache();
             intersectionsCache.forEach(pt => {
                 const sp = worldToScreen(pt.x, pt.y);
-                ctx.fillStyle='#2ecc71'; ctx.beginPath(); ctx.arc(sp.x, sp.y, 3, 0, 2*Math.PI); ctx.fill();
+                ctx.strokeStyle = '#2ecc71'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(sp.x-5, sp.y); ctx.lineTo(sp.x+5, sp.y); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(sp.x, sp.y-5); ctx.lineTo(sp.x, sp.y+5); ctx.stroke();
             });
         }
 
+        // 辅助点
         auxPoints.forEach((ap, idx) => {
             const sp = worldToScreen(ap.x, ap.y);
-            ctx.fillStyle='#9400d3'; ctx.beginPath(); ctx.arc(sp.x, sp.y, 6, 0, 2*Math.PI); ctx.fill();
+            ctx.fillStyle='#9400d3'; ctx.beginPath(); ctx.arc(sp.x, sp.y, 6, 0, Math.PI*2); ctx.fill();
             ctx.fillStyle='#adff2f'; ctx.font='bold 8px Arial'; ctx.fillText(ap.label, sp.x+10, sp.y-10);
         });
 
@@ -660,20 +684,18 @@
         if (edgeToModify.type === 'dirline') {
             const dl = auxDirLines[edgeToModify.dirIndex];
             dl.angle = (dl.angle + toDeg(rot) + 360) % 360;
-            dirtyIntersections = true;
-            refreshCanvas();
+            dirtyIntersections = true; refreshCanvas();
         } else {
             const idx = (edgeToModify.i1 === waypoints.findIndex(w => pointsEqual(w, common))) ? edgeToModify.i2 : edgeToModify.i1;
             const wp = waypoints[idx];
             const dx = wp.x - common.x, dy = wp.y - common.y;
             wp.x = common.x + dx*cosR - dy*sinR;
             wp.y = common.y + dx*sinR + dy*cosR;
-            saveState();
-            refreshCanvas();
+            saveState(); refreshCanvas();
         }
     }
 
-    // ==================== 航线旋转（恢复原逻辑） ====================
+    // ==================== 航线旋转（原逻辑） ====================
     function updateRotateCombos() {
         const s = document.getElementById('rotateStart'), e = document.getElementById('rotateEnd');
         const labels = waypoints.map(w => w.label);
@@ -689,7 +711,7 @@
         const end = waypoints.find(w => w.label === endLabel);
         if (!start || !end) return;
         const curAz = azimuth(start.x, start.y, end.x, end.y);
-        const delta = target - curAz; // 原代码逻辑，直接使用差值
+        const delta = target - curAz; // 原逻辑
         const cx = start.x, cy = start.y;
         const rad = toRad(delta);
         const cosA = Math.cos(rad), sinA = Math.sin(rad);
@@ -799,7 +821,7 @@
         document.getElementById('waypoint-list').style.display = 'none';
         refreshCanvas();
     }
-    // 航点列表长按互换（修复后）
+    // 航点列表长按互换
     const wpList = document.getElementById('waypoint-list');
     wpList.addEventListener('touchstart', (e) => {
         const item = e.target.closest('div[data-index]');
@@ -864,9 +886,15 @@
         if (auxMode) { addAuxPoint(world.x, world.y); auxMode = false; document.getElementById('auxModeBtn').style.background = ''; return; }
 
         clearLongPress();
+        // 辅助点检测
         const auxIdx = getNearbyAux(world.x, world.y);
-        if (auxIdx >= 0) { touchMode = 'drag-aux'; draggingAuxIndex = auxIdx; return; }
-
+        if (auxIdx >= 0) {
+            touchMode = 'drag-aux'; draggingAuxIndex = auxIdx;
+            longPressTarget = { type: 'aux', index: auxIdx };
+            startLongPress(e.touches[0]);
+            return;
+        }
+        // 航点检测
         const overlapping = findOverlappingWaypoints(world.x, world.y);
         if (overlapping.length === 1) {
             const i = overlapping[0];
@@ -881,7 +909,7 @@
                 const chosenIndex = waypoints.findIndex(w => w.label === choice);
                 if (chosenIndex >= 0 && overlapping.includes(chosenIndex)) {
                     touchMode = 'drag-waypoint'; draggingWaypointIndex = chosenIndex; selectedWaypointIndex = chosenIndex;
-                    longPressTarget = null; clearLongPress(); // 不再弹出菜单
+                    longPressTarget = null; clearLongPress();
                     overlapChosen = true;
                     refreshCanvas(); return;
                 }
@@ -889,6 +917,7 @@
             touchMode = 'idle'; return;
         }
 
+        // 线段选择
         const allSegs = getAllSelectableSegments();
         for (const seg of allSegs) {
             const p1 = getSegmentEndpoint(seg,0), p2 = getSegmentEndpoint(seg,1);
@@ -897,6 +926,7 @@
                 refreshCanvas(); touchMode = 'idle'; return;
             }
         }
+        // 交点点击添加
         if (showIntersections) {
             updateIntersectionsCache();
             for (const inter of intersectionsCache)
@@ -944,11 +974,11 @@
             const world = screenToWorld(pt.x, pt.y);
             addWaypoint(world.x, world.y);
         }
-        overlapChosen = false; // 重置重叠选择标志
+        overlapChosen = false;
         touchMode = 'idle';
     });
 
-    function startLongPress(touch) { clearLongPress(); longPressTimer = setTimeout(() => { if (longPressTarget) showWaypointMenu(longPressTarget.index); }, 500); }
+    function startLongPress(touch) { clearLongPress(); longPressTimer = setTimeout(() => { if (longPressTarget) { if (longPressTarget.type === 'waypoint') showWaypointMenu(longPressTarget.index); else if (longPressTarget.type === 'aux') showAuxMenu(longPressTarget.index); } }, 500); }
     function clearLongPress() { if (longPressTimer) clearTimeout(longPressTimer); }
     function showWaypointMenu(index) {
         const action = prompt(`航点 ${waypoints[index].label}:\n1.删除\n2.设为H点\n3.辅助圆\n4.方向线\n5.删除方向线\n6.删除辅助圆`, '');
@@ -958,6 +988,9 @@
         else if (action === '4') addDirectionLine(index);
         else if (action === '5') deleteDirectionLines(index);
         else if (action === '6') deleteCirclesForVertex(index);
+    }
+    function showAuxMenu(index) {
+        if (confirm(`删除辅助点 ${auxPoints[index].label}？`)) deleteAuxPoint(index);
     }
     function toggleEdgeSelection(seg) {
         const idx = selectedEdges.findIndex(e => e.type===seg.type && e.i1===seg.i1 && e.i2===seg.i2 && (e.dirIndex||0)===(seg.dirIndex||0));
@@ -976,9 +1009,8 @@
     });
     function updateScaleDisplay() { scaleSlider.value = scale; scaleValue.textContent = scale.toFixed(1) + 'x'; }
 
-    // 加载持久化数据
     loadWaypoints();
-    saveState(); // 初始化历史
+    saveState();
     refreshCanvas();
 </script>
 </body>
