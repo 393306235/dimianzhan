@@ -1,0 +1,1863 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>CAAC 地面站 · 移动版 V2.0 稳定版</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <style>
+        :root {
+            --bg: #1e1e1e;
+            --panel: #2d2d2d;
+            --entry: #3c3c3c;
+            --fg: #f0f0f0;
+            --accent: #0078d7;
+            --success: #34c759;
+            --warning: #ff9500;
+            --danger: #ff3b30;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg);
+            color: var(--fg);
+            font-family: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+        #left-panel {
+            position: fixed;
+            top: 0; left: 0; bottom: 0;
+            width: 85%; max-width: 380px;
+            background: var(--panel); padding: 15px; z-index: 100;
+            transform: translateX(-100%); transition: transform 0.3s;
+            overflow-y: auto; -webkit-overflow-scrolling: touch;
+            border-right: 1px solid #444;
+        }
+        #left-panel.open { transform: translateX(0); }
+        .panel-close-btn {
+            display: block; width: 100%; background: var(--danger); color: white;
+            border: none; font-size: 18px; padding: 12px; border-radius: 10px;
+            margin-bottom: 15px; cursor: pointer; text-align: center;
+        }
+        #left-panel h2 { font-size: 1.2rem; margin-bottom: 10px; color: var(--accent); }
+        #left-panel h3 { font-size: 1rem; margin-bottom: 8px; color: #aaa; }
+        .group {
+            background: #252525; border-radius: 6px; padding: 12px; margin-bottom: 10px;
+        }
+        .group label { display: block; margin-bottom: 4px; font-size: 0.9rem; }
+        button, select, input[type="number"], input[type="text"] {
+            background: var(--entry); color: var(--fg); border: 1px solid #555;
+            padding: 10px 12px; border-radius: 8px; font-size: 1rem; margin: 4px 0;
+            cursor: pointer;
+            width: 100%;
+        }
+        button:active { background: var(--accent); }
+        .row { display: flex; align-items: center; gap: 5px; margin: 6px 0; flex-wrap: wrap; }
+        #canvas-container { flex: 1; position: relative; background: white; }
+        canvas { width: 100%; height: 100%; display: block; }
+
+        #bottom-bar {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: rgba(28,28,30,0.85); backdrop-filter: blur(10px);
+            display: flex; align-items: center; padding: 8px 12px; gap: 10px;
+            overflow-x: auto; -webkit-overflow-scrolling: touch;
+            border-top: 1px solid rgba(255,255,255,0.15); z-index: 20; min-height: 52px;
+        }
+        #bottom-bar::-webkit-scrollbar { display: none; }
+        .tool-btn {
+            flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%;
+            background: #3c3c3c; border: 1px solid #555; color: var(--fg);
+            font-size: 18px; display: flex; align-items: center; justify-content: center;
+        }
+        .tool-btn:active { background: var(--accent); }
+        .tool-btn.danger { background: var(--danger); }
+        .tool-btn.success { background: var(--success); }
+        .tool-btn.warning { background: var(--warning); }
+        #menuBtn { font-size: 1.5rem; padding: 6px 12px; border-radius: 8px; background: #3c3c3c; }
+        #status-text-inline {
+            color: #f0f0f0; font-size: 0.85rem; margin-left: 10px;
+            white-space: nowrap; cursor: pointer;
+        }
+
+        #scale-bar {
+            position: absolute; top: 52px; left: 0; right: 0; height: 36px;
+            background: rgba(28,28,30,0.8); backdrop-filter: blur(10px);
+            display: flex; align-items: center; padding: 0 10px; gap: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.15); z-index: 19;
+        }
+        #scale-bar input[type="range"] {
+            flex: 1; height: 6px; -webkit-appearance: none; background: #555;
+            border-radius: 3px; outline: none;
+        }
+        #scale-bar input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 28px; height: 28px;
+            background: var(--accent); border-radius: 50%; border: 2px solid white; cursor: pointer;
+        }
+        #scale-value { width: 48px; text-align: center; font-size: 0.85rem; color: #f0f0f0; flex-shrink: 0; }
+        #coords-display {
+            position: absolute; top: 92px; left: 10px;
+            background: rgba(28,28,30,0.8); backdrop-filter: blur(10px);
+            padding: 4px 8px; border-radius: 4px; font-size: 0.75rem;
+            color: #f0f0f0; z-index: 18;
+        }
+
+        .modal {
+            display: none; position: fixed; z-index: 200; background: #2d2d2d;
+            border: 1px solid #555; border-radius: 12px; width: 90%; max-width: 350px;
+            max-height: 80vh; overflow-y: auto; left: 50%; top: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .modal.active { display: block; }
+        .modal-header {
+            background: #444; padding: 10px; border-radius: 12px 12px 0 0;
+            cursor: grab; text-align: center; font-weight: bold;
+        }
+        .modal input[type="number"] { width: 80px; }
+        .modal .row { margin: 8px 0; }
+        .checkbox-label { display: flex; align-items: center; gap: 5px; }
+        select { width: auto; }
+
+        #waypoint-list {
+            position: absolute; top: 50px; right: 8px; width: 140px;
+            background: rgba(28,28,30,0.85); backdrop-filter: blur(10px);
+            border-radius: 12px; padding: 6px; max-height: 200px; overflow-y: auto;
+            z-index: 18; display: none; border: 1px solid rgba(255,255,255,0.15); color: var(--fg);
+        }
+        #waypoint-list div {
+            padding: 10px; border-radius: 8px; font-size: 14px; cursor: pointer;
+            touch-action: manipulation;
+        }
+        #waypoint-list div:active, #waypoint-list div.selected { background: var(--accent); }
+
+        #circleList div {
+            padding: 6px; border-radius: 4px; cursor: pointer; margin: 2px 0;
+        }
+        #circleList div.selected { background: var(--accent); }
+
+        input, textarea {
+            user-select: text !important;
+            -webkit-user-select: text !important;
+            touch-action: auto !important;
+        }
+
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); z-index: 199;
+        }
+        .modal-overlay.active { display: block; }
+
+        #stats-panel {
+            position: absolute; top: 118px; left: 10px;
+            background: rgba(28,28,30,0.85); backdrop-filter: blur(10px);
+            padding: 6px 10px; border-radius: 6px; font-size: 0.7rem;
+            color: #f0f0f0; z-index: 18; line-height: 1.4;
+        }
+
+        .toast {
+            position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.8); color: white; padding: 10px 20px;
+            border-radius: 8px; z-index: 300; font-size: 0.9rem;
+            opacity: 0; transition: opacity 0.3s; pointer-events: none;
+        }
+        .toast.show { opacity: 1; }
+
+        .action-feedback {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: var(--accent); color: white; padding: 20px 40px;
+            border-radius: 12px; font-size: 1.2rem; font-weight: bold;
+            z-index: 301; opacity: 0; transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .action-feedback.show { opacity: 1; }
+    </style>
+</head>
+<body>
+<div class="modal-overlay" id="modalOverlay"></div>
+<div class="toast" id="toast"></div>
+<div class="action-feedback" id="actionFeedback"></div>
+
+<div id="left-panel">
+    <button class="panel-close-btn" onclick="closePanel()">✕ 关闭工具箱</button>
+    <h2>操作</h2>
+    <div class="group">
+        <button onclick="openRelativeDialog()">相对坐标编辑器</button>
+        <button onclick="openWaypointParamsDialog()">编辑选中航点</button>
+        <button onclick="resetView()">一键居中视图</button>
+        <button onclick="deleteSelectedWaypoint()">删除选中航点</button>
+        <button onclick="clearAllWaypoints()">删除所有航点</button>
+        <div class="row">
+            <button onclick="exportKML()">导出KML航线</button>
+            <button onclick="importKML()">导入KML</button>
+        </div>
+        <label class="checkbox-label">
+            <input type="checkbox" id="autoCloseCheck" onchange="toggleAutoClose()"> 自动闭合航线
+        </label>
+        <button id="auxModeBtn" onclick="toggleAuxMode()">📌 添加辅助点模式</button>
+    </div>
+    <div class="group">
+        <h3>批量设置</h3>
+        <div class="row">
+            <label>统一高度:</label>
+            <input type="number" id="batchHeight" value="100" style="width:80px;">
+            <button onclick="batchSetHeight()">应用</button>
+        </div>
+        <div class="row">
+            <label>统一速度:</label>
+            <input type="number" id="batchSpeed" value="15" style="width:80px;">
+            <button onclick="batchSetSpeed()">应用</button>
+        </div>
+    </div>
+    <div class="group">
+        <h3>航线旋转</h3>
+        <div class="row">
+            <label>起始点:</label>
+            <select id="rotateStart"></select>
+            <label>终点:</label>
+            <select id="rotateEnd"></select>
+        </div>
+        <div class="row">
+            <label>目标航向(°):</label>
+            <input type="number" id="rotateTarget" value="0" style="width:80px;">
+            <button onclick="rotateRoute()">旋转</button>
+        </div>
+    </div>
+    <div class="group">
+        <h3>航线统计</h3>
+        <div id="routeStats">
+            <div>总距离: <span id="totalDistance">0</span> 米</div>
+            <div>预计时间: <span id="estimatedTime">0</span> 分钟</div>
+            <div>航点数量: <span id="waypointCount">0</span></div>
+        </div>
+        <button onclick="reverseRoute()">反转航线</button>
+    </div>
+    <div class="group">
+        <h3>辅助工具</h3>
+        <button onclick="clearAllCircles()">清空所有圆</button>
+        <div style="height:100px; overflow-y:auto; border:1px solid #555; margin:4px 0; padding:2px;" id="circleList"></div>
+        <button onclick="deleteSelectedCircle()">删除选中圆</button>
+        <label class="checkbox-label">
+            <input type="checkbox" id="showIntersectionsCheck" onchange="toggleIntersections()"> 显示交点 (单击添加)
+        </label>
+    </div>
+    <div style="font-size:0.8rem; color:gray; margin-top:8px;">
+        · 双击画布添加航点<br>
+        · 长按航点弹出菜单<br>
+        · 点击线段可选中测角<br>
+        · 双指捏合缩放画布<br>
+        · 单指拖动平移画布
+    </div>
+</div>
+
+<div id="canvas-container">
+    <canvas id="mainCanvas"></canvas>
+    <div id="bottom-bar">
+        <button class="tool-btn" id="menuBtn" onclick="togglePanel()">☰</button>
+        <button class="tool-btn" onclick="undo()">↩</button>
+        <button class="tool-btn" onclick="redo()">↪</button>
+        <button class="tool-btn" id="addBtn" onclick="toggleAddMode()">＋</button>
+        <button class="tool-btn" onclick="openRelativeDialog()">⊕</button>
+        <button class="tool-btn" onclick="showWaypointList()">☷</button>
+        <button class="tool-btn danger" onclick="clearAllWaypoints()">✕</button>
+        <span id="status-text-inline" onclick="modifySelectedAngle()">就绪</span>
+    </div>
+    <div id="scale-bar">
+        <input type="range" id="scale-slider" min="0.1" max="30" step="0.1" value="1">
+        <span id="scale-value">1.0x</span>
+    </div>
+    <div id="coords-display">X: 0.0 Y: 0.0</div>
+    <div id="stats-panel"></div>
+</div>
+
+<div id="relativeModal" class="modal">
+    <div class="modal-header" id="relativeModalHeader">相对坐标编辑器</div>
+    <div style="padding: 15px;">
+        <div class="row">
+            <label>基准点:</label>
+            <select id="basePointSelect"></select>
+        </div>
+        <div class="row">
+            <label>方位角(°):</label>
+            <input type="number" id="relAzimuth" value="0">
+        </div>
+        <div class="row">
+            <label>距离(米):</label>
+            <input type="number" id="relDistance" value="100">
+        </div>
+        <div class="row">
+            <label>新标签:</label>
+            <input type="text" id="relLabel" value="">
+        </div>
+        <div class="row">
+            <label>高度(米):</label>
+            <input type="number" id="relHeight" value="100">
+        </div>
+        <button onclick="addWaypointByRelative()">添加航点</button>
+        <button onclick="closeRelativeDialog()">关闭</button>
+    </div>
+</div>
+
+<div id="waypointParamsModal" class="modal">
+    <div class="modal-header">航点参数编辑</div>
+    <div style="padding: 15px;">
+        <div class="row">
+            <label>标签:</label>
+            <input type="text" id="wpLabel" value="">
+        </div>
+        <div class="row">
+            <label>高度(米):</label>
+            <input type="number" id="wpHeight" value="100">
+        </div>
+        <div class="row">
+            <label>水平速度(m/s):</label>
+            <input type="number" id="wpHorizontalSpeed" value="15">
+        </div>
+        <div class="row">
+            <label>垂直速度(m/s):</label>
+            <input type="number" id="wpVerticalSpeed" value="5">
+        </div>
+        <div class="row">
+            <label>转弯模式:</label>
+            <select id="wpTurnMode">
+                <option value="曲线飞行">曲线飞行</option>
+                <option value="直线飞行">直线飞行</option>
+                <option value="定点转弯">定点转弯</option>
+            </select>
+        </div>
+        <button onclick="saveWaypointParams()">保存</button>
+        <button onclick="closeWaypointParamsDialog()">关闭</button>
+    </div>
+</div>
+
+<div id="waypoint-list"></div>
+
+<input type="file" id="kmlFileInput" accept=".kml" style="display:none" onchange="handleKMLFile(event)">
+
+<script>
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+const dpr = window.devicePixelRatio || 1;
+const statusText = document.getElementById('status-text-inline');
+const scaleSlider = document.getElementById('scale-slider');
+const scaleValue = document.getElementById('scale-value');
+const coordsDisplay = document.getElementById('coords-display');
+const modalOverlay = document.getElementById('modalOverlay');
+
+let waypoints = [];
+let selectedWaypointIndex = null;
+let auxPoints = [];
+let auxConnections = new Map();
+let auxCircles = [];
+let auxDirLines = [];
+let scale = 1.0;
+let panOffset = [0, 0];
+let autoClose = false;
+let selectedEdges = [];
+const edgeThreshold = 10;
+let showIntersections = false;
+let dirtyIntersections = true;
+let intersectionsCache = [];
+let history = [];
+let historyIndex = -1;
+let addMode = false;
+let auxMode = false;
+let modalOpen = false;
+
+let touchMode = null;
+let lastTapTime = 0;
+let lastTapPos = null;
+let longPressTimer = null;
+let longPressTarget = null;
+let draggingWaypointIndex = null;
+let draggingAuxIndex = null;
+let dragOffset = [0, 0];
+let panStart = null;
+let overlapChosen = false;
+let initialPinchDistance = 0;
+let initialScale = 1.0;
+
+let isDraggingModal = false;
+let modalDragStart = { x: 0, y: 0, left: 0, top: 0 };
+
+let wpListPressStart = null;
+let wpListLongPressHandled = false;
+
+let animationFrameId = null;
+let isDirty = false;
+
+// ==================== 初始化与持久化 ====================
+function loadWaypoints() {
+    try {
+        const saved = localStorage.getItem('gcs-waypoints-v2');
+        if (saved) {
+            const data = JSON.parse(saved);
+            if (data && Array.isArray(data.waypoints)) {
+                waypoints = data.waypoints;
+                auxCircles = data.auxCircles || [];
+                auxDirLines = data.auxDirLines || [];
+                validateWaypoints();
+            }
+        }
+    } catch(e) {
+        console.error('加载数据失败:', e);
+        showToast('数据加载失败');
+    }
+}
+
+function validateWaypoints() {
+    waypoints = waypoints.filter(wp => {
+        return wp && typeof wp.x === 'number' && typeof wp.y === 'number' &&
+               typeof wp.label === 'string' && wp.params;
+    });
+    waypoints.forEach(wp => {
+        if (!wp.params) {
+            wp.params = { height: 100, verticalSpeed: 5, horizontalSpeed: 15, turnMode: '曲线飞行' };
+        }
+    });
+}
+
+function saveAll() {
+    try {
+        const data = {
+            waypoints,
+            auxCircles,
+            auxDirLines,
+            version: '2.0',
+            timestamp: Date.now()
+        };
+        localStorage.setItem('gcs-waypoints-v2', JSON.stringify(data));
+        updateRouteStats();
+    } catch(e) {
+        console.error('保存失败:', e);
+        showToast('保存失败');
+    }
+}
+
+// ==================== 工具函数 ====================
+function toRad(deg) { return deg * Math.PI / 180; }
+function toDeg(rad) { return rad * 180 / Math.PI; }
+function dist(x1, y1, x2, y2) { return Math.hypot(x2 - x1, y2 - y1); }
+function azimuth(x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    if (Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12) return 0;
+    const angle = Math.atan2(dx, dy) * 180 / Math.PI;
+    return (angle + 360) % 360;
+}
+function pointToSegmentDist(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    if (dx === 0 && dy === 0) return Math.hypot(px - x1, py - y1);
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+// ==================== 历史记录系统 ====================
+function saveState() {
+    try {
+        const state = JSON.parse(JSON.stringify({ waypoints, auxCircles, auxDirLines }));
+        if (historyIndex < history.length - 1) history = history.slice(0, historyIndex + 1);
+        history.push(state);
+        historyIndex = history.length - 1;
+        if (history.length > 50) { history.shift(); historyIndex--; }
+        dirtyIntersections = true;
+        saveAll();
+        markDirty();
+    } catch(e) {
+        console.error('保存状态失败:', e);
+    }
+}
+
+function markDirty() {
+    isDirty = true;
+    if (!animationFrameId) {
+        animationFrameId = requestAnimationFrame(renderLoop);
+    }
+}
+
+function renderLoop() {
+    if (isDirty) {
+        refreshCanvas();
+        isDirty = false;
+    }
+    animationFrameId = null;
+}
+
+function undo() {
+    if (historyIndex > 0) {
+        historyIndex--;
+        const state = JSON.parse(JSON.stringify(history[historyIndex]));
+        waypoints = state.waypoints;
+        auxCircles = state.auxCircles;
+        auxDirLines = state.auxDirLines;
+        selectedWaypointIndex = null; selectedEdges = [];
+        markDirty(); saveAll();
+        showToast('已撤销');
+    }
+}
+function redo() {
+    if (historyIndex < history.length - 1) {
+        historyIndex++;
+        const state = JSON.parse(JSON.stringify(history[historyIndex]));
+        waypoints = state.waypoints;
+        auxCircles = state.auxCircles;
+        auxDirLines = state.auxDirLines;
+        selectedWaypointIndex = null; selectedEdges = [];
+        markDirty(); saveAll();
+        showToast('已重做');
+    }
+}
+
+// ==================== 坐标转换 ====================
+function worldToScreen(wx, wy) {
+    return { x: wx * scale + panOffset[0], y: wy * scale + panOffset[1] };
+}
+function screenToWorld(sx, sy) {
+    return { x: (sx - panOffset[0]) / scale, y: (sy - panOffset[1]) / scale };
+}
+
+// ==================== 航点操作 ====================
+function getNextLabel() {
+    let maxNum = 0;
+    waypoints.forEach(wp => {
+        if (wp.label !== 'H') {
+            const n = parseInt(wp.label);
+            if (!isNaN(n) && n > maxNum) maxNum = n;
+        }
+    });
+    return String(maxNum + 1);
+}
+
+function addWaypoint(x, y, label, height=100) {
+    saveState();
+    const hasH = waypoints.some(wp => wp.label === 'H');
+    const has1 = waypoints.some(wp => wp.label === '1');
+    if (!label) label = !hasH ? 'H' : (!has1 ? '1' : getNextLabel());
+    waypoints.push({
+        x, y, label,
+        params: {
+            height,
+            verticalSpeed: 5,
+            horizontalSpeed: 15,
+            turnMode: '曲线飞行'
+        }
+    });
+    dirtyIntersections = true;
+    markDirty();
+    updateBasePointCombo();
+    updateRotateCombos();
+    updateRouteStats();
+    showActionFeedback('✓ 航点已添加');
+}
+
+function deleteWaypoint(index) {
+    if (index == null || index >= waypoints.length) return;
+    if (waypoints[index].label === 'H' && confirm('删除H点会清空所有航点，确定？')) {
+        clearAllWaypoints(); return;
+    }
+    saveState();
+    const label = waypoints[index].label;
+    waypoints.splice(index, 1);
+    auxCircles = auxCircles.filter(c => !(c.centerType === 'vertex' && c.centerRef === label));
+    auxDirLines = auxDirLines.filter(dl => dl.vertexLabel !== label);
+    selectedWaypointIndex = null; selectedEdges = [];
+    markDirty();
+    updateBasePointCombo();
+    updateRotateCombos();
+    updateRouteStats();
+}
+
+function clearAllWaypoints() {
+    if (waypoints.length === 0 || !confirm('确定清空所有航点？')) return;
+    saveState();
+    waypoints = [];
+    auxCircles = [];
+    auxDirLines = [];
+    selectedEdges = [];
+    markDirty();
+    updateBasePointCombo();
+    updateRotateCombos();
+    updateRouteStats();
+}
+
+function deleteSelectedWaypoint() { deleteWaypoint(selectedWaypointIndex); }
+function toggleAutoClose() { autoClose = document.getElementById('autoCloseCheck').checked; markDirty(); }
+function setAsHome(index) {
+    if (index == null || index >= waypoints.length) return;
+    if (waypoints[index].label === 'H') return;
+    const existingHomeIndex = waypoints.findIndex(w => w.label === 'H');
+    if (existingHomeIndex >= 0) waypoints[existingHomeIndex].label = getNextLabel();
+    waypoints[index].label = 'H';
+    saveState(); markDirty();
+}
+
+function batchSetHeight() {
+    const height = parseFloat(document.getElementById('batchHeight').value);
+    if (isNaN(height) || height < 0) { alert('请输入有效的高度'); return; }
+    saveState();
+    waypoints.forEach(wp => wp.params.height = height);
+    markDirty();
+    showToast(`已将所有航点高度设置为 ${height} 米`);
+}
+
+function batchSetSpeed() {
+    const speed = parseFloat(document.getElementById('batchSpeed').value);
+    if (isNaN(speed) || speed <= 0) { alert('请输入有效的速度'); return; }
+    saveState();
+    waypoints.forEach(wp => wp.params.horizontalSpeed = speed);
+    markDirty();
+    showToast(`已将所有航点速度设置为 ${speed} m/s`);
+}
+
+function reverseRoute() {
+    if (waypoints.length < 2) {
+        alert('航线至少需要2个航点才能反转');
+        return;
+    }
+    saveState();
+    waypoints.reverse();
+    if (selectedWaypointIndex !== null) {
+        selectedWaypointIndex = waypoints.length - 1 - selectedWaypointIndex;
+    }
+    markDirty();
+    updateRotateCombos();
+    showToast('航线已反转');
+}
+
+// ==================== 航线统计 ====================
+function updateRouteStats() {
+    if (waypoints.length < 2) {
+        document.getElementById('totalDistance').textContent = '0';
+        document.getElementById('estimatedTime').textContent = '0';
+        document.getElementById('waypointCount').textContent = waypoints.length;
+        return;
+    }
+
+    let totalDist = 0;
+    let totalTime = 0;
+    for (let i = 0; i < waypoints.length - 1; i++) {
+        const d = dist(waypoints[i].x, waypoints[i].y, waypoints[i+1].x, waypoints[i+1].y);
+        totalDist += d;
+        totalTime += d / waypoints[i].params.horizontalSpeed;
+    }
+
+    if (autoClose && waypoints.length >= 3) {
+        const d = dist(waypoints[waypoints.length-1].x, waypoints[waypoints.length-1].y,
+                       waypoints[0].x, waypoints[0].y);
+        totalDist += d;
+        totalTime += d / waypoints[waypoints.length-1].params.horizontalSpeed;
+    }
+
+    let heightChanges = 0;
+    for (let i = 0; i < waypoints.length - 1; i++) {
+        heightChanges += Math.abs(waypoints[i+1].params.height - waypoints[i].params.height);
+    }
+    if (autoClose && waypoints.length >= 2) {
+        heightChanges += Math.abs(waypoints[0].params.height - waypoints[waypoints.length-1].params.height);
+    }
+
+    const avgVerticalSpeed = 5;
+    totalTime += heightChanges / avgVerticalSpeed / 60;
+
+    document.getElementById('totalDistance').textContent = Math.round(totalDist);
+    document.getElementById('estimatedTime').textContent = Math.round(totalTime * 10) / 10;
+    document.getElementById('waypointCount').textContent = waypoints.length;
+}
+
+// ==================== 辅助元素操作 ====================
+function addAuxPoint(x, y) {
+    const label = `A${auxPoints.length + 1}`;
+    auxPoints.push({ x, y, label });
+    auxConnections.set(auxPoints.length - 1, new Set());
+    dirtyIntersections = true; markDirty();
+}
+function deleteAuxPoint(index) {
+    if (index == null || index >= auxPoints.length) return;
+    auxPoints.splice(index, 1);
+    auxConnections.delete(index);
+    const newMap = new Map();
+    for (let i = 0; i < auxPoints.length; i++) {
+        newMap.set(i, auxConnections.get(i + (i >= index ? 1 : 0)) || new Set());
+    }
+    auxConnections = newMap;
+    dirtyIntersections = true; markDirty();
+}
+function updateAuxConnections() {
+    const th = 20 / scale;
+    auxPoints.forEach((ap, idx) => {
+        const conn = auxConnections.get(idx) || new Set();
+        waypoints.forEach(wp => {
+            if (!conn.has(wp.label) && dist(ap.x, ap.y, wp.x, wp.y) <= th) conn.add(wp.label);
+        });
+        auxConnections.set(idx, conn);
+    });
+    dirtyIntersections = true;
+}
+function getNearbyAux(wx, wy) {
+    const th = 20 / scale;
+    for (let i = 0; i < auxPoints.length; i++) if (dist(wx, wy, auxPoints[i].x, auxPoints[i].y) <= th) return i;
+    return -1;
+}
+function addCircleForVertex(index) {
+    const radius = prompt('输入半径（米）:', '100');
+    if (!radius || isNaN(radius) || radius <= 0) return;
+    saveState();
+    auxCircles.push({ centerType: 'vertex', centerRef: waypoints[index].label, radius: parseFloat(radius) });
+    dirtyIntersections = true; markDirty();
+}
+function deleteCirclesForVertex(index) {
+    const label = waypoints[index].label;
+    const before = auxCircles.length;
+    auxCircles = auxCircles.filter(c => !(c.centerType === 'vertex' && c.centerRef === label));
+    if (auxCircles.length < before) {
+        saveState();
+        dirtyIntersections = true; markDirty();
+        alert(`已删除 ${before - auxCircles.length} 个辅助圆`);
+    }
+    else alert('该航点没有辅助圆');
+}
+function addDirectionLine(index) {
+    const angle = prompt('输入方向角度（0-360°）:', '315');
+    if (angle === null || isNaN(angle)) return;
+    saveState();
+    auxDirLines.push({ vertexLabel: waypoints[index].label, angle: parseFloat(angle) });
+    dirtyIntersections = true; markDirty();
+}
+function deleteDirectionLines(index) {
+    const label = waypoints[index].label;
+    const before = auxDirLines.length;
+    auxDirLines = auxDirLines.filter(dl => dl.vertexLabel !== label);
+    if (auxDirLines.length < before) {
+        saveState();
+        dirtyIntersections = true; markDirty();
+        alert(`已删除 ${before - auxDirLines.length} 条方向线`);
+    }
+    else alert('该航点没有方向线');
+}
+function clearAllCircles() {
+    if (auxCircles.length === 0) return;
+    saveState();
+    auxCircles = [];
+    dirtyIntersections = true; markDirty();
+}
+function deleteSelectedCircle() {
+    if (selectedCircleIndex < 0 || selectedCircleIndex >= auxCircles.length) return;
+    saveState();
+    auxCircles.splice(selectedCircleIndex, 1);
+    selectedCircleIndex = -1;
+    dirtyIntersections = true; markDirty();
+}
+
+// ==================== 交点计算 ====================
+function computeAllIntersections() {
+    const segs = [];
+    if (waypoints.length >= 2) {
+        for (let i = 0; i < waypoints.length - 1; i++) segs.push([waypoints[i], waypoints[i+1]]);
+        if (autoClose && waypoints.length >= 3) segs.push([waypoints[waypoints.length-1], waypoints[0]]);
+    }
+    auxConnections.forEach((conn, idx) => {
+        const ap = auxPoints[idx];
+        conn.forEach(wlbl => {
+            const wp = waypoints.find(w => w.label === wlbl);
+            if (wp) segs.push([ap, wp]);
+        });
+    });
+    const WORLD_LENGTH = 1e6;
+    auxDirLines.forEach(dl => {
+        const wp = waypoints.find(w => w.label === dl.vertexLabel);
+        if (wp) {
+            const rad = toRad(90 - dl.angle);
+            segs.push([wp, { x: wp.x + WORLD_LENGTH * Math.cos(rad), y: wp.y - WORLD_LENGTH * Math.sin(rad) }]);
+        }
+    });
+    const allPts = [];
+    auxCircles.forEach(c => {
+        let center = (c.centerType === 'vertex') ? waypoints.find(w => w.label === c.centerRef) : auxPoints[c.centerRef];
+        if (!center) return;
+        segs.forEach(seg => allPts.push(...lineCircleIntersections(seg[0], seg[1], center, c.radius)));
+    });
+    for (let i = 0; i < segs.length; i++)
+        for (let j = i+1; j < segs.length; j++) {
+            const inter = segmentIntersection(segs[i][0], segs[i][1], segs[j][0], segs[j][1]);
+            if (inter) allPts.push(inter);
+        }
+    return allPts.filter(pt => !waypoints.some(w => dist(pt.x, pt.y, w.x, w.y) < 5));
+}
+function lineCircleIntersections(p1, p2, center, radius) {
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const fx = p1.x - center.x, fy = p1.y - center.y;
+    const a = dx*dx + dy*dy;
+    if (a === 0) return Math.hypot(fx, fy) <= radius+1e-6 ? [{x:p1.x, y:p1.y}] : [];
+    const b = 2*(fx*dx + fy*dy), c = fx*fx + fy*fy - radius*radius;
+    const disc = b*b - 4*a*c;
+    if (disc < 0) return [];
+    const sqrt = Math.sqrt(disc);
+    const t1 = (-b - sqrt)/(2*a), t2 = (-b + sqrt)/(2*a);
+    const pts = [];
+    if (t1 >=0 && t1 <=1) pts.push({ x: p1.x + dx*t1, y: p1.y + dy*t1 });
+    if (t2 >=0 && t2 <=1) pts.push({ x: p1.x + dx*t2, y: p1.y + dy*t2 });
+    return pts;
+}
+function segmentIntersection(p1, p2, p3, p4) {
+    const denom = (p1.x-p2.x)*(p3.y-p4.y) - (p1.y-p2.y)*(p3.x-p4.x);
+    if (Math.abs(denom) < 1e-12) return null;
+    const t = ((p1.x-p3.x)*(p3.y-p4.y) - (p1.y-p3.y)*(p3.x-p4.x)) / denom;
+    const u = -((p1.x-p2.x)*(p1.y-p3.y) - (p1.y-p2.y)*(p1.x-p3.x)) / denom;
+    if (t>=0 && t<=1 && u>=0 && u<=1) return { x: p1.x + t*(p2.x-p1.x), y: p1.y + t*(p2.y-p1.y) };
+    return null;
+}
+function updateIntersectionsCache() { if (dirtyIntersections) { intersectionsCache = computeAllIntersections(); dirtyIntersections = false; } }
+
+// ==================== 绘图系统（性能优化）====================
+let cachedCanvasSize = { width: 0, height: 0 };
+
+function refreshCanvas() {
+    drawCanvas();
+    updateRotateCombos();
+    updateCircleListbox();
+    updateScaleDisplay();
+    updateWaypointList();
+}
+
+function drawCanvas() {
+    const cw = canvas.clientWidth;
+    const ch = canvas.clientHeight;
+
+    if (canvas.width !== cw * dpr || canvas.height !== ch * dpr) {
+        canvas.width = cw * dpr;
+        canvas.height = ch * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, cw, ch);
+
+    const gs = 50 * scale;
+    const ox = panOffset[0] % gs;
+    const oy = panOffset[1] % gs;
+    ctx.strokeStyle = '#d0d0d0';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = ox; x < cw; x += gs) { ctx.moveTo(x,0); ctx.lineTo(x,ch); }
+    for (let y = oy; y < ch; y += gs) { ctx.moveTo(0,y); ctx.lineTo(cw,y); }
+    ctx.stroke();
+
+    const r = 45, cxr = 60, cyr = 140;
+    ctx.strokeStyle = '#7f8c8d';
+    ctx.beginPath(); ctx.arc(cxr, cyr, r, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cxr-r, cyr); ctx.lineTo(cxr+r, cyr); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cxr, cyr-r); ctx.lineTo(cxr, cyr+r); ctx.stroke();
+    for (let deg = 0; deg < 360; deg += 45) {
+        const rad = toRad(90 - deg);
+        ctx.beginPath();
+        ctx.moveTo(cxr+(r-6)*Math.cos(rad), cyr-(r-6)*Math.sin(rad));
+        ctx.lineTo(cxr+r*Math.cos(rad), cyr-r*Math.sin(rad));
+        ctx.stroke();
+    }
+    const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+    const angs = [0,45,90,135,180,225,270,315];
+    ctx.font = 'bold 10px Arial';
+    ctx.fillStyle = '#2c3e50';
+    ctx.textAlign = 'center';
+    dirs.forEach((d,i) => {
+        const rad = toRad(90 - angs[i]);
+        ctx.fillText(d, cxr+(r+14)*Math.cos(rad), cyr-(r+14)*Math.sin(rad));
+    });
+
+    const allSegs = getAllSelectableSegments();
+    allSegs.forEach(seg => {
+        const p1 = getSegmentEndpoint(seg,0), p2 = getSegmentEndpoint(seg,1);
+        const sp1 = worldToScreen(p1.x, p1.y), sp2 = worldToScreen(p2.x, p2.y);
+        let color = (seg.type === 'dirline') ? '#f1c40f' : '#2980b9';
+        if (selectedEdges.some(e => e.type===seg.type && e.i1===seg.i1 && e.i2===seg.i2 && (e.dirIndex||0)===(seg.dirIndex||0))) color = '#e74c3c';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = (seg.type==='dirline')?2:4;
+        if (seg.type==='dirline') ctx.setLineDash([6,4]);
+        ctx.beginPath(); ctx.moveTo(sp1.x, sp1.y); ctx.lineTo(sp2.x, sp2.y); ctx.stroke();
+        ctx.setLineDash([]);
+        if (seg.type === 'route') {
+            const az = azimuth(p1.x, p1.y, p2.x, p2.y);
+            const d = dist(p1.x, p1.y, p2.x, p2.y);
+            const mx = (sp1.x + sp2.x)/2, my = (sp1.y + sp2.y)/2;
+            ctx.fillStyle = '#e67e22';
+            ctx.font = 'bold 8px Arial';
+            ctx.fillText(`${az.toFixed(0)}° ${d.toFixed(1)}m`, mx, my - 8);
+        }
+    });
+
+    auxCircles.forEach(c => {
+        let center = (c.centerType==='vertex')?waypoints.find(w=>w.label===c.centerRef):auxPoints[c.centerRef];
+        if(!center) return;
+        const sp = worldToScreen(center.x, center.y);
+        ctx.strokeStyle='green';
+        ctx.lineWidth=2;
+        ctx.setLineDash([4,2]);
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, c.radius*scale, 0, Math.PI*2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle='green';
+        ctx.font='bold 9px Arial';
+        ctx.fillText(`${Math.round(c.radius)}m`, sp.x, sp.y);
+    });
+
+    if(showIntersections){
+        updateIntersectionsCache();
+        intersectionsCache.forEach(pt => {
+            const sp = worldToScreen(pt.x, pt.y);
+            ctx.strokeStyle = '#2ecc71';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(sp.x-5, sp.y); ctx.lineTo(sp.x+5, sp.y); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(sp.x, sp.y-5); ctx.lineTo(sp.x, sp.y+5); ctx.stroke();
+        });
+    }
+
+    auxPoints.forEach((ap, idx) => {
+        const sp = worldToScreen(ap.x, ap.y);
+        ctx.fillStyle='#9400d3';
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, 6, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle='#adff2f';
+        ctx.font='bold 8px Arial';
+        ctx.fillText(ap.label, sp.x+10, sp.y-10);
+    });
+
+    waypoints.forEach((wp,i)=>{
+        const sp = worldToScreen(wp.x, wp.y);
+        const color = wp.label==='H'?'#e74c3c':(i===selectedWaypointIndex?'#f39c12':'#3498db');
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, (wp.label==='H'||i===selectedWaypointIndex)?14:11, 0, Math.PI*2);
+        ctx.fill();
+        ctx.strokeStyle = '#2980b9';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = '#2c3e50';
+        ctx.font = `bold ${wp.label==='H'?15:13}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.fillText(`${wp.label}(${wp.params.height}m)`, sp.x, sp.y-22);
+    });
+
+    updateStatusMessage();
+}
+
+function getAllSelectableSegments() {
+    const segs = [];
+    if (waypoints.length >= 2) {
+        for (let i=0; i<waypoints.length-1; i++) segs.push({type:'route', i1:i, i2:i+1});
+        if (autoClose && waypoints.length>=3) segs.push({type:'route', i1:waypoints.length-1, i2:0});
+    }
+    auxDirLines.forEach((dl, idx) => {
+        const wpIdx = waypoints.findIndex(w => w.label === dl.vertexLabel);
+        if (wpIdx>=0) segs.push({type:'dirline', i1:wpIdx, i2:-1, dirIndex:idx});
+    });
+    return segs;
+}
+function getSegmentEndpoint(edge, which) {
+    if (edge.type==='route') return waypoints[which===0?edge.i1:edge.i2];
+    const wp = waypoints[edge.i1];
+    if (which===0) return wp;
+    const dl = auxDirLines[edge.dirIndex];
+    const rad = toRad(90 - dl.angle);
+    return { x: wp.x + 1e6*Math.cos(rad), y: wp.y - 1e6*Math.sin(rad) };
+}
+function pointsEqual(p1,p2) { return Math.abs(p1.x-p2.x)<0.01 && Math.abs(p1.y-p2.y)<0.01; }
+
+function updateStatusMessage() {
+    if (selectedEdges.length === 2) {
+        const [e1,e2] = selectedEdges;
+        const p1=getSegmentEndpoint(e1,0), p2=getSegmentEndpoint(e1,1);
+        const p3=getSegmentEndpoint(e2,0), p4=getSegmentEndpoint(e2,1);
+        let common, other1, other2;
+        if (pointsEqual(p1,p3)) { common=p1; other1=p2; other2=p4; }
+        else if (pointsEqual(p1,p4)) { common=p1; other1=p2; other2=p3; }
+        else if (pointsEqual(p2,p3)) { common=p2; other1=p1; other2=p4; }
+        else if (pointsEqual(p2,p4)) { common=p2; other1=p1; other2=p3; }
+        if (common) {
+            const ang = calcAngleAtVertex(other1, common, other2);
+            statusText.textContent = `夹角:${ang.toFixed(1)}° (点击修改)`;
+        } else statusText.textContent = `航点:${waypoints.length}`;
+    } else statusText.textContent = `航点:${waypoints.length}`;
+}
+function calcAngleAtVertex(p1,p2,p3) {
+    const v1 = { x: p1.x-p2.x, y: p1.y-p2.y }, v2 = { x: p3.x-p2.x, y: p3.y-p2.y };
+    const dot = v1.x*v2.x + v1.y*v2.y;
+    const m1 = Math.hypot(v1.x,v1.y), m2 = Math.hypot(v2.x,v2.y);
+    if (m1===0 || m2===0) return 0;
+    return toDeg(Math.acos(Math.max(-1, Math.min(1, dot/(m1*m2)))));
+}
+
+function modifySelectedAngle() {
+    if (selectedEdges.length !== 2) return;
+    const [e1,e2] = selectedEdges;
+    const p1=getSegmentEndpoint(e1,0), p2=getSegmentEndpoint(e1,1);
+    const p3=getSegmentEndpoint(e2,0), p4=getSegmentEndpoint(e2,1);
+    let common, other1, other2, edgeToModify;
+    if (pointsEqual(p1,p3)) { common=p1; other1=p2; other2=p4; edgeToModify=e1; }
+    else if (pointsEqual(p1,p4)) { common=p1; other1=p2; other2=p3; edgeToModify=e1; }
+    else if (pointsEqual(p2,p3)) { common=p2; other1=p1; other2=p4; edgeToModify=e1; }
+    else if (pointsEqual(p2,p4)) { common=p2; other1=p1; other2=p3; edgeToModify=e1; }
+    else return;
+    const curAng = calcAngleAtVertex(other1, common, other2);
+    const newAng = prompt(`当前夹角 ${curAng.toFixed(1)}°，输入新角度（0-180）：`, curAng.toFixed(1));
+    if (!newAng || isNaN(newAng)) return;
+    const angle = parseFloat(newAng);
+    const v1 = { x: other1.x-common.x, y: other1.y-common.y };
+    const v2 = { x: other2.x-common.x, y: other2.y-common.y };
+    const cross = v1.x*v2.y - v1.y*v2.x;
+    const curRad = Math.atan2(cross, v1.x*v2.x+v1.y*v2.y);
+    const targetRad = (cross>=0?1:-1) * toRad(angle);
+    const rot = targetRad - curRad;
+    const cosR = Math.cos(rot), sinR = Math.sin(rot);
+    if (edgeToModify.type === 'dirline') {
+        const dl = auxDirLines[edgeToModify.dirIndex];
+        dl.angle = (dl.angle + toDeg(rot) + 360) % 360;
+        saveState();
+        dirtyIntersections = true; markDirty();
+    } else {
+        const idx = (edgeToModify.i1 === waypoints.findIndex(w => pointsEqual(w, common))) ? edgeToModify.i2 : edgeToModify.i1;
+        const wp = waypoints[idx];
+        const dx = wp.x - common.x, dy = wp.y - common.y;
+        wp.x = common.x + dx*cosR - dy*sinR;
+        wp.y = common.y + dx*sinR + dy*cosR;
+        saveState(); markDirty();
+    }
+}
+
+// ==================== 航线旋转 ====================
+function updateRotateCombos() {
+    const s = document.getElementById('rotateStart'), e = document.getElementById('rotateEnd');
+    if (!s || !e) return;
+    const labels = waypoints.map(w => w.label);
+    s.innerHTML = labels.map(l => `<option>${l}</option>`).join('');
+    e.innerHTML = labels.map(l => `<option>${l}</option>`).join('');
+}
+function rotateRoute() {
+    const startLabel = document.getElementById('rotateStart').value;
+    const endLabel = document.getElementById('rotateEnd').value;
+    const target = parseFloat(document.getElementById('rotateTarget').value);
+    if (isNaN(target)) return;
+    const start = waypoints.find(w => w.label === startLabel);
+    const end = waypoints.find(w => w.label === endLabel);
+    if (!start || !end) return;
+    const curAz = azimuth(start.x, start.y, end.x, end.y);
+    const delta = target - curAz;
+    const cx = start.x, cy = start.y;
+    const rad = toRad(delta);
+    const cosA = Math.cos(rad), sinA = Math.sin(rad);
+    saveState();
+
+    waypoints.forEach(wp => {
+        const dx = wp.x - cx, dy = wp.y - cy;
+        wp.x = cx + dx * cosA - dy * sinA;
+        wp.y = cy + dx * sinA + dy * cosA;
+    });
+
+    auxCircles.forEach(c => {
+        if (c.centerType === 'vertex') return;
+        const ap = auxPoints[c.centerRef];
+        const dx = ap.x - cx, dy = ap.y - cy;
+        ap.x = cx + dx * cosA - dy * sinA;
+        ap.y = cy + dx * sinA + dy * cosA;
+    });
+
+    auxDirLines.forEach(dl => {
+        dl.angle = (dl.angle + delta + 360) % 360;
+    });
+
+    markDirty();
+}
+
+// ==================== 相对坐标编辑器 ====================
+function openRelativeDialog() {
+    if (addMode) disableAddMode();
+    showModal('relativeModal');
+    updateBasePointCombo();
+}
+function closeRelativeDialog() { hideModal('relativeModal'); }
+function updateBasePointCombo() {
+    const sel = document.getElementById('basePointSelect');
+    if (!sel) return;
+    sel.innerHTML = waypoints.map(w => `<option>${w.label}</option>`).join('');
+}
+function addWaypointByRelative() {
+    const baseLabel = document.getElementById('basePointSelect').value;
+    const az = parseFloat(document.getElementById('relAzimuth').value);
+    const distVal = parseFloat(document.getElementById('relDistance').value);
+    const label = document.getElementById('relLabel').value || getNextLabel();
+    const height = parseFloat(document.getElementById('relHeight').value) || 100;
+    const bp = waypoints.find(w => w.label === baseLabel);
+    if (!bp || isNaN(az) || isNaN(distVal)) return;
+    const rad = toRad(90 - az);
+    const nx = bp.x + distVal * Math.cos(rad);
+    const ny = bp.y - distVal * Math.sin(rad);
+    addWaypoint(nx, ny, label, height);
+}
+
+// ==================== 航点参数编辑 ====================
+function openWaypointParamsDialog() {
+    if (selectedWaypointIndex === null) { alert('请先选中一个航点'); return; }
+    const wp = waypoints[selectedWaypointIndex];
+    document.getElementById('wpLabel').value = wp.label;
+    document.getElementById('wpHeight').value = wp.params.height;
+    document.getElementById('wpHorizontalSpeed').value = wp.params.horizontalSpeed;
+    document.getElementById('wpVerticalSpeed').value = wp.params.verticalSpeed;
+    document.getElementById('wpTurnMode').value = wp.params.turnMode;
+    showModal('waypointParamsModal');
+}
+function closeWaypointParamsDialog() { hideModal('waypointParamsModal'); }
+function saveWaypointParams() {
+    if (selectedWaypointIndex === null) return;
+    const wp = waypoints[selectedWaypointIndex];
+    const newLabel = document.getElementById('wpLabel').value.trim();
+    if (newLabel && newLabel !== wp.label) {
+        if (waypoints.some(w => w.label === newLabel)) {
+            alert('标签已存在');
+            return;
+        }
+        auxCircles.forEach(c => {
+            if (c.centerType === 'vertex' && c.centerRef === wp.label) {
+                c.centerRef = newLabel;
+            }
+        });
+        auxDirLines.forEach(dl => {
+            if (dl.vertexLabel === wp.label) {
+                dl.vertexLabel = newLabel;
+            }
+        });
+        wp.label = newLabel;
+    }
+    wp.params.height = parseFloat(document.getElementById('wpHeight').value) || 100;
+    wp.params.horizontalSpeed = parseFloat(document.getElementById('wpHorizontalSpeed').value) || 15;
+    wp.params.verticalSpeed = parseFloat(document.getElementById('wpVerticalSpeed').value) || 5;
+    wp.params.turnMode = document.getElementById('wpTurnMode').value;
+    saveState();
+    closeWaypointParamsDialog();
+    markDirty();
+}
+
+// ==================== 模态框管理 ====================
+function showModal(id) {
+    document.getElementById(id).classList.add('active');
+    modalOverlay.classList.add('active');
+    modalOpen = true;
+}
+function hideModal(id) {
+    document.getElementById(id).classList.remove('active');
+    modalOverlay.classList.remove('active');
+    modalOpen = false;
+}
+
+function setupModalDrag(modalId, headerId) {
+    const modal = document.getElementById(modalId);
+    const header = document.getElementById(headerId);
+    if (!modal || !header) return;
+
+    header.addEventListener('touchstart', (e) => {
+        e.stopPropagation();
+        isDraggingModal = true;
+        const rect = modal.getBoundingClientRect();
+        modalDragStart = { x: e.touches[0].clientX, y: e.touches[0].clientY, left: rect.left, top: rect.top };
+    });
+
+    document.addEventListener('touchmove', (e) => {
+        if (isDraggingModal && e.touches.length === 1) {
+            const dx = e.touches[0].clientX - modalDragStart.x;
+            const dy = e.touches[0].clientY - modalDragStart.y;
+            modal.style.left = (modalDragStart.left + dx) + 'px';
+            modal.style.top = (modalDragStart.top + dy) + 'px';
+            modal.style.transform = 'none';
+        }
+    }, { passive: false });
+
+    document.addEventListener('touchend', () => { isDraggingModal = false; });
+}
+setupModalDrag('relativeModal', 'relativeModalHeader');
+
+// ==================== 其他工具函数 ====================
+function resetView() {
+    if (waypoints.length === 0) { scale = 1; panOffset = [0,0]; }
+    else {
+        const xs = waypoints.map(w=>w.x), ys = waypoints.map(w=>w.y);
+        const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+        const cx=(minX+maxX)/2, cy=(minY+maxY)/2;
+        const w = maxX-minX+200, h = maxY-minY+200;
+        const cw=canvas.clientWidth, ch=canvas.clientHeight;
+        scale = Math.min(cw/w, ch/h, 5.0);
+        scale = Math.max(scale, 0.1);
+        panOffset = [cw/2 - cx*scale, ch/2 - cy*scale];
+    }
+    markDirty();
+}
+function updateCircleListbox() {
+    const list = document.getElementById('circleList');
+    if (!list) return;
+    list.innerHTML = auxCircles.map((c,i) =>
+        `<div class="${i===selectedCircleIndex?'selected':''}" data-index="${i}">圆${i+1} R=${c.radius}m</div>`
+    ).join('');
+}
+let selectedCircleIndex = -1;
+document.getElementById('circleList').addEventListener('click', (e) => {
+    const item = e.target.closest('div[data-index]');
+    if (!item) return;
+    selectedCircleIndex = parseInt(item.dataset.index);
+    updateCircleListbox();
+});
+function togglePanel() { document.getElementById('left-panel').classList.toggle('open'); }
+function closePanel() { document.getElementById('left-panel').classList.remove('open'); }
+function disableAddMode() {
+    addMode = false;
+    document.getElementById('addBtn').classList.remove('success');
+}
+function toggleAddMode() {
+    addMode = !addMode;
+    auxMode = false;
+    document.getElementById('addBtn').classList.toggle('success', addMode);
+    document.getElementById('auxModeBtn').classList.remove('warning');
+    if (addMode) showActionFeedback('+ 点击画布添加航点');
+}
+function toggleAuxMode() {
+    auxMode = !auxMode;
+    addMode = false;
+    document.getElementById('addBtn').classList.remove('success');
+    document.getElementById('auxModeBtn').classList.toggle('warning', auxMode);
+    if (auxMode) showActionFeedback('📌 点击画布添加辅助点');
+}
+function showWaypointList() {
+    const div = document.getElementById('waypoint-list');
+    div.style.display = div.style.display === 'block' ? 'none' : 'block';
+    updateWaypointList();
+}
+function updateWaypointList() {
+    const list = document.getElementById('waypoint-list');
+    if (!list) return;
+    list.innerHTML = waypoints.map((wp,i) =>
+        `<div data-index="${i}" class="${i===selectedWaypointIndex?'selected':''}">${wp.label} (${wp.params.height}m)</div>`
+    ).join('');
+}
+function selectWaypoint(index) {
+    selectedWaypointIndex = index;
+    document.getElementById('waypoint-list').style.display = 'none';
+    markDirty();
+}
+const wpList = document.getElementById('waypoint-list');
+wpList.addEventListener('click', (e) => {
+    const item = e.target.closest('div[data-index]');
+    if (!item) return;
+    const index = parseInt(item.dataset.index);
+    selectWaypoint(index);
+});
+wpList.addEventListener('touchstart', (e) => {
+    const item = e.target.closest('div[data-index]');
+    if (!item) { wpListPressStart = null; return; }
+    const index = parseInt(item.dataset.index);
+    wpListPressStart = { x: e.touches[0].clientX, y: e.touches[0].clientY, index, time: Date.now() };
+    wpListLongPressHandled = false;
+});
+wpList.addEventListener('touchmove', (e) => {
+    if (!wpListPressStart) return;
+    if (Math.abs(e.touches[0].clientX - wpListPressStart.x) > 10 || Math.abs(e.touches[0].clientY - wpListPressStart.y) > 10) wpListPressStart = null;
+});
+wpList.addEventListener('touchend', () => {
+    if (!wpListPressStart || wpListLongPressHandled) { wpListPressStart = null; wpListLongPressHandled = false; return; }
+    if (Date.now() - wpListPressStart.time >= 500) {
+        const idx = wpListPressStart.index;
+        const targetLabel = prompt(`将航点 ${waypoints[idx].label} 与哪个航点互换？`, '');
+        if (targetLabel) {
+            const targetIndex = waypoints.findIndex(w => w.label === targetLabel);
+            if (targetIndex >= 0 && targetIndex !== idx) {
+                saveState();
+                [waypoints[idx], waypoints[targetIndex]] = [waypoints[targetIndex], waypoints[idx]];
+                if (selectedWaypointIndex === idx) selectedWaypointIndex = targetIndex;
+                else if (selectedWaypointIndex === targetIndex) selectedWaypointIndex = idx;
+                selectedEdges = [];
+                markDirty();
+                updateWaypointList();
+            } else alert('未找到该航点或不能与自身互换');
+        }
+        wpListLongPressHandled = true;
+    }
+    wpListPressStart = null;
+});
+
+// ==================== KML导出/导入 ====================
+function exportKML() {
+    if (waypoints.length < 2) { alert('至少需要2个航点才能导出航线'); return; }
+
+    let kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>CAAC 地面站航线</name>
+    <description>导出时间: ${new Date().toLocaleString()}</description>
+    <Style id="waypointStyle">
+      <IconStyle>
+        <Icon>
+          <href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href>
+        </Icon>
+      </IconStyle>
+    </Style>
+    <Style id="routeStyle">
+      <LineStyle>
+        <color>ff0000ff</color>
+        <width>4</width>
+      </LineStyle>
+    </Style>
+`;
+
+    waypoints.forEach((wp, i) => {
+        kml += `
+    <Placemark>
+      <name>${escapeXml(wp.label)}</name>
+      <description>高度: ${wp.params.height}m, 水平速度: ${wp.params.horizontalSpeed}m/s, 垂直速度: ${wp.params.verticalSpeed}m/s, 转弯模式: ${wp.params.turnMode}</description>
+      <styleUrl>#waypointStyle</styleUrl>
+      <Point>
+        <coordinates>${wp.x},${wp.y},${wp.params.height}</coordinates>
+      </Point>
+    </Placemark>
+`;
+    });
+
+    kml += `
+    <Placemark>
+      <name>航线</name>
+      <styleUrl>#routeStyle</styleUrl>
+      <LineString>
+        <tessellate>1</tessellate>
+        <altitudeMode>absolute</altitudeMode>
+        <coordinates>
+`;
+    waypoints.forEach(wp => {
+        kml += `          ${wp.x},${wp.y},${wp.params.height}\n`;
+    });
+    if (autoClose) {
+        kml += `          ${waypoints[0].x},${waypoints[0].y},${waypoints[0].params.height}\n`;
+    }
+    kml += `
+        </coordinates>
+      </LineString>
+    </Placemark>
+  </Document>
+</kml>`;
+
+    const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `航线_${new Date().toISOString().slice(0,10)}.kml`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('KML文件已导出');
+}
+
+function escapeXml(str) {
+    return str.replace(/[<>&'"]/g, c => ({
+        '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;'
+    })[c]);
+}
+
+function importKML() {
+    const input = document.getElementById('kmlFileInput');
+    input.click();
+}
+
+function handleKMLFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(e.target.result, 'text/xml');
+            const placemarks = doc.querySelectorAll('Placemark');
+
+            const newWaypoints = [];
+            let maxLabel = 0;
+
+            placemarks.forEach(pm => {
+                const coords = pm.querySelector('coordinates');
+                const nameEl = pm.querySelector('name');
+                const descEl = pm.querySelector('description');
+
+                if (coords) {
+                    const coordText = coords.textContent.trim().split(/[\s,]+/);
+                    if (coordText.length >= 3) {
+                        const x = parseFloat(coordText[0]);
+                        const y = parseFloat(coordText[1]);
+                        const z = parseFloat(coordText[2]) || 100;
+
+                        if (!isNaN(x) && !isNaN(y)) {
+                            let label = nameEl ? nameEl.textContent.trim() : '';
+                            if (!label) {
+                                maxLabel++;
+                                label = String(maxLabel);
+                            }
+
+                            let height = z;
+                            let horizontalSpeed = 15;
+                            let verticalSpeed = 5;
+                            let turnMode = '曲线飞行';
+
+                            if (descEl) {
+                                const desc = descEl.textContent;
+                                const heightMatch = desc.match(/高度:\s*(\d+)/);
+                                const speedMatch = desc.match(/水平速度:\s*(\d+)/);
+                                const vSpeedMatch = desc.match(/垂直速度:\s*(\d+)/);
+                                const turnMatch = desc.match(/转弯模式:\s*([^\s,]+)/);
+
+                                if (heightMatch) height = parseFloat(heightMatch[1]);
+                                if (speedMatch) horizontalSpeed = parseFloat(speedMatch[1]);
+                                if (vSpeedMatch) verticalSpeed = parseFloat(vSpeedMatch[1]);
+                                if (turnMatch) turnMode = turnMatch[1];
+                            }
+
+                            newWaypoints.push({
+                                x, y, label,
+                                params: { height, horizontalSpeed, verticalSpeed, turnMode }
+                            });
+                        }
+                    }
+                }
+            });
+
+            if (newWaypoints.length === 0) {
+                alert('未在KML文件中找到有效的航点');
+                return;
+            }
+
+            if (newWaypoints.length < 2) {
+                alert('KML文件至少需要2个航点');
+                return;
+            }
+
+            if (waypoints.length > 0) {
+                if (!confirm('导入将覆盖当前航点，确定继续？')) return;
+            }
+
+            saveState();
+            waypoints = newWaypoints;
+            selectedWaypointIndex = null;
+            selectedEdges = [];
+            autoClose = false;
+            document.getElementById('autoCloseCheck').checked = false;
+            dirtyIntersections = true;
+            markDirty();
+            updateBasePointCombo();
+            updateRotateCombos();
+            updateRouteStats();
+            showToast(`已导入 ${waypoints.length} 个航点`);
+            resetView();
+
+        } catch (error) {
+            console.error('导入KML失败:', error);
+            alert('导入KML文件失败：' + error.message);
+        }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+}
+
+// ==================== Toast提示 ====================
+function showToast(message, duration = 2000) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), duration);
+}
+
+function showActionFeedback(message) {
+    const feedback = document.getElementById('actionFeedback');
+    feedback.textContent = message;
+    feedback.classList.add('show');
+    setTimeout(() => feedback.classList.remove('show'), 1000);
+}
+
+// ==================== 触摸事件系统 ====================
+function getCanvasTouch(e) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+}
+function getCanvasChangedTouch(e) {
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.changedTouches[0];
+    return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+}
+function findOverlappingWaypoints(wx, wy) {
+    const th = 20 / scale;
+    return waypoints.reduce((arr, wp, i) => { if (dist(wx, wy, wp.x, wp.y) <= th) arr.push(i); return arr; }, []);
+}
+
+// ==================== 长按功能 ====================
+function startLongPress(touch) {
+    clearLongPress();
+    longPressTimer = setTimeout(() => {
+        if (longPressTarget) {
+            handleLongPress(longPressTarget);
+            longPressTarget = null;
+        }
+    }, 500);
+}
+
+function clearLongPress() {
+    if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+    }
+}
+
+function handleLongPress(target) {
+    if (target.type === 'waypoint') {
+        const wp = waypoints[target.index];
+        const actions = [
+            '设为起点(H)',
+            '添加辅助圆',
+            '添加方向线',
+            '删除航点',
+            '取消'
+        ];
+        const action = prompt(`航点 ${wp.label} 操作:\n1. 设为起点(H)\n2. 添加辅助圆\n3. 添加方向线\n4. 删除航点\n5. 取消`);
+        switch(action) {
+            case '1': setAsHome(target.index); break;
+            case '2': addCircleForVertex(target.index); break;
+            case '3': addDirectionLine(target.index); break;
+            case '4': deleteWaypoint(target.index); break;
+        }
+    } else if (target.type === 'aux') {
+        if (confirm('确定删除此辅助点？')) {
+            deleteAuxPoint(target.index);
+        }
+    }
+}
+
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (modalOpen) return;
+
+    const panel = document.getElementById('left-panel');
+    if (panel.classList.contains('open')) {
+        const touch = e.touches[0];
+        if (!panel.contains(document.elementFromPoint(touch.clientX, touch.clientY))) closePanel();
+    }
+
+    if (e.touches.length === 2) {
+        touchMode = 'pinch';
+        const t1 = e.touches[0], t2 = e.touches[1];
+        initialPinchDistance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        initialScale = scale;
+        clearLongPress();
+        return;
+    }
+
+    if (e.touches.length !== 1) { touchMode = null; return; }
+
+    const pt = getCanvasTouch(e);
+    const world = screenToWorld(pt.x, pt.y);
+
+    coordsDisplay.textContent = `X: ${world.x.toFixed(1)} Y: ${world.y.toFixed(1)}`;
+
+    if (addMode) {
+        addWaypoint(world.x, world.y);
+        return;
+    }
+    if (auxMode) {
+        addAuxPoint(world.x, world.y);
+        auxMode = false;
+        document.getElementById('auxModeBtn').classList.remove('warning');
+        return;
+    }
+
+    clearLongPress();
+    const auxIdx = getNearbyAux(world.x, world.y);
+    if (auxIdx >= 0) {
+        touchMode = 'drag-aux';
+        draggingAuxIndex = auxIdx;
+        const sp = worldToScreen(auxPoints[auxIdx].x, auxPoints[auxIdx].y);
+        dragOffset = [pt.x - sp.x, pt.y - sp.y];
+        longPressTarget = { type: 'aux', index: auxIdx };
+        startLongPress(e.touches[0]);
+        return;
+    }
+
+    const overlapping = findOverlappingWaypoints(world.x, world.y);
+    if (overlapping.length === 1) {
+        const i = overlapping[0];
+        touchMode = 'drag-waypoint';
+        draggingWaypointIndex = i;
+        selectedWaypointIndex = i;
+        const sp = worldToScreen(waypoints[i].x, waypoints[i].y);
+        dragOffset = [pt.x - sp.x, pt.y - sp.y];
+        longPressTarget = { type: 'waypoint', index: i };
+        startLongPress(e.touches[0]);
+        markDirty();
+        return;
+    }
+
+    if (overlapping.length > 1) {
+        touchMode = 'overlap-select';
+        overlapChosen = false;
+        const labels = overlapping.map(i => waypoints[i].label).join(', ');
+        const choice = prompt(`发现重叠航点 (${labels})，输入标签选择:`, waypoints[overlapping[0]].label);
+        if (choice) {
+            const idx = waypoints.findIndex(w => w.label === choice);
+            if (idx >= 0) {
+                selectedWaypointIndex = idx;
+                touchMode = 'drag-waypoint';
+                draggingWaypointIndex = idx;
+                const sp = worldToScreen(waypoints[idx].x, waypoints[idx].y);
+                dragOffset = [pt.x - sp.x, pt.y - sp.y];
+                longPressTarget = { type: 'waypoint', index: idx };
+                startLongPress(e.touches[0]);
+                overlapChosen = true;
+            }
+        }
+        if (!overlapChosen) {
+            touchMode = 'pan';
+            panStart = { x: pt.x - panOffset[0], y: pt.y - panOffset[1] };
+        }
+        markDirty();
+        return;
+    }
+
+    const seg = findNearbySegment(world);
+    if (seg) {
+        if (selectedEdges.length === 2) selectedEdges = [];
+        const exists = selectedEdges.some(e => e.type===seg.type && e.i1===seg.i1 && e.i2===seg.i2 && (e.dirIndex||0)===(seg.dirIndex||0));
+        if (!exists) selectedEdges.push(seg);
+        touchMode = 'select-edge';
+        markDirty();
+        return;
+    }
+
+    touchMode = 'pan';
+    panStart = { x: pt.x - panOffset[0], y: pt.y - panOffset[1] };
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (modalOpen) return;
+
+    if (touchMode === 'pinch' && e.touches.length === 2) {
+        const t1 = e.touches[0], t2 = e.touches[1];
+        const currentDistance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        const scaleFactor = currentDistance / initialPinchDistance;
+        scale = Math.max(0.1, Math.min(30, initialScale * scaleFactor));
+        updateScaleDisplay();
+        markDirty();
+        clearLongPress();
+        return;
+    }
+
+    if (e.touches.length !== 1) return;
+
+    const pt = getCanvasTouch(e);
+    const world = screenToWorld(pt.x, pt.y);
+
+    if (touchMode === 'drag-waypoint' && draggingWaypointIndex !== null) {
+        waypoints[draggingWaypointIndex].x = world.x;
+        waypoints[draggingWaypointIndex].y = world.y;
+        dirtyIntersections = true;
+        markDirty();
+        clearLongPress();
+        return;
+    }
+
+    if (touchMode === 'drag-aux' && draggingAuxIndex !== null) {
+        auxPoints[draggingAuxIndex].x = world.x;
+        auxPoints[draggingAuxIndex].y = world.y;
+        dirtyIntersections = true;
+        markDirty();
+        clearLongPress();
+        return;
+    }
+
+    if (touchMode === 'pan' && panStart) {
+        panOffset[0] = pt.x - panStart.x;
+        panOffset[1] = pt.y - panStart.y;
+        markDirty();
+        clearLongPress();
+    }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    clearLongPress();
+
+    if (touchMode === 'drag-waypoint' && draggingWaypointIndex !== null) {
+        saveState();
+        draggingWaypointIndex = null;
+    }
+
+    if (touchMode === 'drag-aux' && draggingAuxIndex !== null) {
+        draggingAuxIndex = null;
+    }
+
+    touchMode = null;
+    panStart = null;
+    draggingWaypointIndex = null;
+    draggingAuxIndex = null;
+    longPressTarget = null;
+}, { passive: false });
+
+// ==================== 鼠标事件（桌面支持）====================
+canvas.addEventListener('dblclick', (e) => {
+    if (modalOpen) return;
+    const rect = canvas.getBoundingClientRect();
+    const pt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const world = screenToWorld(pt.x, pt.y);
+    addWaypoint(world.x, world.y);
+});
+
+canvas.addEventListener('mousedown', (e) => {
+    if (modalOpen) return;
+    const rect = canvas.getBoundingClientRect();
+    const pt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const world = screenToWorld(pt.x, pt.y);
+
+    const auxIdx = getNearbyAux(world.x, world.y);
+    if (auxIdx >= 0) {
+        touchMode = 'drag-aux';
+        draggingAuxIndex = auxIdx;
+        return;
+    }
+
+    const overlapping = findOverlappingWaypoints(world.x, world.y);
+    if (overlapping.length === 1) {
+        selectedWaypointIndex = overlapping[0];
+        touchMode = 'drag-waypoint';
+        draggingWaypointIndex = overlapping[0];
+        markDirty();
+        return;
+    }
+
+    const seg = findNearbySegment(world);
+    if (seg) {
+        if (selectedEdges.length === 2) selectedEdges = [];
+        const exists = selectedEdges.some(e => e.type===seg.type && e.i1===seg.i1 && e.i2===seg.i2 && (e.dirIndex||0)===(seg.dirIndex||0));
+        if (!exists) selectedEdges.push(seg);
+        touchMode = 'select-edge';
+        markDirty();
+        return;
+    }
+
+    touchMode = 'pan';
+    panStart = { x: e.clientX - panOffset[0], y: e.clientY - panOffset[1] };
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    if (modalOpen) return;
+    const rect = canvas.getBoundingClientRect();
+    const pt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const world = screenToWorld(pt.x, pt.y);
+
+    coordsDisplay.textContent = `X: ${world.x.toFixed(1)} Y: ${world.y.toFixed(1)}`;
+
+    if (touchMode === 'drag-waypoint' && draggingWaypointIndex !== null) {
+        waypoints[draggingWaypointIndex].x = world.x;
+        waypoints[draggingWaypointIndex].y = world.y;
+        dirtyIntersections = true;
+        markDirty();
+        return;
+    }
+
+    if (touchMode === 'drag-aux' && draggingAuxIndex !== null) {
+        auxPoints[draggingAuxIndex].x = world.x;
+        auxPoints[draggingAuxIndex].y = world.y;
+        dirtyIntersections = true;
+        markDirty();
+        return;
+    }
+
+    if (touchMode === 'pan' && panStart) {
+        panOffset[0] = e.clientX - panStart.x;
+        panOffset[1] = e.clientY - panStart.y;
+        markDirty();
+    }
+});
+
+canvas.addEventListener('mouseup', (e) => {
+    if (touchMode === 'drag-waypoint' && draggingWaypointIndex !== null) {
+        saveState();
+    }
+    touchMode = null;
+    panStart = null;
+    draggingWaypointIndex = null;
+    draggingAuxIndex = null;
+});
+
+canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const worldBefore = screenToWorld(mouseX, mouseY);
+    scale = Math.max(0.1, Math.min(30, scale * delta));
+    const worldAfter = screenToWorld(mouseX, mouseY);
+    panOffset[0] += (worldAfter.x - worldBefore.x) * scale;
+    panOffset[1] += (worldAfter.y - worldBefore.y) * scale;
+    updateScaleDisplay();
+    markDirty();
+}, { passive: false });
+
+function findNearbySegment(world) {
+    const th = edgeThreshold / scale;
+    const segs = getAllSelectableSegments();
+    for (const seg of segs) {
+        const p1 = getSegmentEndpoint(seg, 0);
+        const p2 = getSegmentEndpoint(seg, 1);
+        if (pointToSegmentDist(world.x, world.y, p1.x, p1.y, p2.x, p2.y) <= th) {
+            return seg;
+        }
+    }
+    return null;
+}
+
+// ==================== 缩放控制 ====================
+scaleSlider.addEventListener('input', (e) => {
+    const newScale = parseFloat(e.target.value);
+    const rect = canvas.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const worldBefore = screenToWorld(centerX, centerY);
+    scale = newScale;
+    const worldAfter = screenToWorld(centerX, centerY);
+    panOffset[0] += (worldAfter.x - worldBefore.x) * scale;
+    panOffset[1] += (worldAfter.y - worldBefore.y) * scale;
+    updateScaleDisplay();
+    markDirty();
+});
+
+function updateScaleDisplay() {
+    scaleSlider.value = scale;
+    scaleValue.textContent = scale.toFixed(1) + 'x';
+}
+
+function toggleIntersections() {
+    showIntersections = document.getElementById('showIntersectionsCheck').checked;
+    dirtyIntersections = true;
+    markDirty();
+}
+
+// ==================== 初始化 ====================
+function init() {
+    loadWaypoints();
+    saveState();
+    resetView();
+    updateScaleDisplay();
+    updateRouteStats();
+
+    window.addEventListener('resize', () => {
+        markDirty();
+    });
+}
+
+init();
+</script>
+</body>
+</html>
